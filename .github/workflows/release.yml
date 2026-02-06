@@ -32,7 +32,11 @@ jobs:
 
       - name: Build and package (Windows)
         if: runner.os == 'Windows'
-        run: .\gradlew.bat clean test packageAppImage -PjpackageType=exe
+        run: .\gradlew.bat clean test packageAppImage -PjpackageType=msi
+
+      - name: Build portable app-image (Windows)
+        if: runner.os == 'Windows'
+        run: .\gradlew.bat packageAppImage -PjpackageType=app-image
 
       - name: Archive package (Unix)
         if: runner.os != 'Windows'
@@ -45,7 +49,10 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path release | Out-Null
-          Copy-Item -Path build\jpackage\out\*.exe -Destination release -Force
+          Copy-Item -Path build\jpackage\out\*.msi -Destination release -Force
+          if (Test-Path "build\jpackage\out\world-portal") {
+            Compress-Archive -Path build\jpackage\out\world-portal\* -DestinationPath release\world-portal-Windows-app-image.zip -Force
+          }
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4

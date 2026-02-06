@@ -70,9 +70,10 @@ tasks.register("packageAppImage") {
         )
 
         if (osName.contains("win")) {
-            command.add("--win-console")
+            command.add("--win-menu")
             command.add("--win-shortcut")
             command.add("--win-dir-chooser")
+            command.add("--win-per-user-install")
         }
 
         exec {
