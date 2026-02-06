@@ -30,7 +30,7 @@ javafx {
 }
 
 application {
-    mainClass = "io.worldportal.app.WorldPortalApplication"
+    mainClass = "io.worldportal.app.WorldPortalLauncher"
 }
 
 tasks.shadowJar {
