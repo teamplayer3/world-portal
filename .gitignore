@@ -1,0 +1,25 @@
+# Gradle
+.gradle/
+build/
+out/
+
+# Local Gradle cache used in this workspace
+.gradle-home/
+
+# IntelliJ / JetBrains
+.idea/
+*.iml
+
+# VS Code
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Environment/local overrides
+.env
+.env.*
