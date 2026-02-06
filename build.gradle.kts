@@ -49,23 +49,34 @@ tasks.register("packageAppImage") {
         val jarFile = shadowJarTask.archiveFile.get().asFile
         val appVersion = project.version.toString().substringBefore("-")
         val packageType = providers.gradleProperty("jpackageType").orElse("app-image").get()
+        val osName = System.getProperty("os.name").lowercase()
 
         copy {
             from(jarFile)
             into(inputDir)
         }
 
+        val command = mutableListOf(
+            "jpackage",
+            "--name", "world-portal",
+            "--type", packageType,
+            "--input", inputDir.absolutePath,
+            "--main-jar", jarFile.name,
+            "--main-class", application.mainClass.get(),
+            "--app-version", appVersion,
+            "--dest", outputDir.absolutePath,
+            "--java-options", "-Dworldportal.debug=true",
+            "--java-options", "-Dprism.verbose=true"
+        )
+
+        if (osName.contains("win")) {
+            command.add("--win-console")
+            command.add("--win-shortcut")
+            command.add("--win-dir-chooser")
+        }
+
         exec {
-            commandLine(
-                "jpackage",
-                "--name", "world-portal",
-                "--type", packageType,
-                "--input", inputDir.absolutePath,
-                "--main-jar", jarFile.name,
-                "--main-class", application.mainClass.get(),
-                "--app-version", appVersion,
-                "--dest", outputDir.absolutePath
-            )
+            commandLine(command)
         }
     }
 }
