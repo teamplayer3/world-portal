@@ -6,6 +6,7 @@ import javafx.collections.FXCollections;
 import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
+import javafx.scene.control.ListView;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.TextField;
@@ -114,8 +115,8 @@ class MainControllerConnectionStateTest {
         runOnFxThreadAndWait(() -> {
             invokeTransferBusyState(controller, false);
 
-            assertFalse(uploadButton.isDisable());
-            assertFalse(downloadButton.isDisable());
+            assertTrue(uploadButton.isDisable());
+            assertTrue(downloadButton.isDisable());
             assertFalse(refreshButton.isDisable());
             assertFalse(transferProgressIndicator.isVisible());
 
@@ -125,6 +126,52 @@ class MainControllerConnectionStateTest {
             assertTrue(downloadButton.isDisable());
             assertTrue(refreshButton.isDisable());
             assertTrue(transferProgressIndicator.isVisible());
+        });
+    }
+
+    @Test
+    void transferButtonsRequireMatchingWorldSelection() throws Exception {
+        Assumptions.assumeTrue(javaFxAvailable, "JavaFX runtime is not available in this environment");
+        MainController controller = new MainController() {
+            @Override
+            protected boolean isRemoteConnected() {
+                return true;
+            }
+        };
+
+        Button uploadButton = new Button();
+        Button downloadButton = new Button();
+        Button refreshButton = new Button();
+        ProgressIndicator transferProgressIndicator = new ProgressIndicator();
+        Label transferStatusLabel = new Label();
+        ListView<Object> localWorldsList = new ListView<>();
+        ListView<Object> remoteWorldsList = new ListView<>();
+
+        setField(controller, "uploadButton", uploadButton);
+        setField(controller, "downloadButton", downloadButton);
+        setField(controller, "refreshButton", refreshButton);
+        setField(controller, "transferProgressIndicator", transferProgressIndicator);
+        setField(controller, "transferStatusLabel", transferStatusLabel);
+        setField(controller, "localWorldsList", localWorldsList);
+        setField(controller, "remoteWorldsList", remoteWorldsList);
+
+        runOnFxThreadAndWait(() -> {
+            localWorldsList.getItems().add(new Object());
+            remoteWorldsList.getItems().add(new Object());
+
+            invokeTransferBusyState(controller, false);
+            assertTrue(uploadButton.isDisable());
+            assertTrue(downloadButton.isDisable());
+
+            localWorldsList.getSelectionModel().select(0);
+            invokeTransferBusyState(controller, false);
+            assertFalse(uploadButton.isDisable());
+            assertTrue(downloadButton.isDisable());
+
+            remoteWorldsList.getSelectionModel().select(0);
+            invokeTransferBusyState(controller, false);
+            assertFalse(uploadButton.isDisable());
+            assertFalse(downloadButton.isDisable());
         });
     }
 
@@ -149,9 +196,18 @@ class MainControllerConnectionStateTest {
     }
 
     private static void setField(Object target, String fieldName, Object value) throws Exception {
-        Field field = target.getClass().getDeclaredField(fieldName);
-        field.setAccessible(true);
-        field.set(target, value);
+        Class<?> current = target.getClass();
+        while (current != null) {
+            try {
+                Field field = current.getDeclaredField(fieldName);
+                field.setAccessible(true);
+                field.set(target, value);
+                return;
+            } catch (NoSuchFieldException ignored) {
+                current = current.getSuperclass();
+            }
+        }
+        throw new NoSuchFieldException(fieldName);
     }
 
     private static void runOnFxThreadAndWait(Runnable runnable) throws InterruptedException {

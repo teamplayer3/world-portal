@@ -8,6 +8,7 @@ import io.worldportal.app.service.WorldService;
 import io.worldportal.app.service.impl.SshConnectionService;
 import io.worldportal.app.service.impl.StubTransferService;
 import io.worldportal.app.service.impl.StubWorldService;
+import io.worldportal.app.service.impl.WhitelistService;
 import io.worldportal.app.service.impl.WorldComparisonService;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -16,6 +17,7 @@ import javafx.geometry.Pos;
 import javafx.application.Platform;
 import javafx.scene.control.ContentDisplay;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.CheckBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
@@ -23,12 +25,16 @@ import javafx.scene.control.TextField;
 import javafx.scene.control.Button;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.ProgressIndicator;
+import javafx.scene.input.MouseButton;
 import javafx.scene.Group;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
+import javafx.scene.Scene;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
+import javafx.stage.Modality;
+import javafx.stage.Stage;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Rectangle;
 
@@ -41,6 +47,7 @@ import java.nio.file.Paths;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
@@ -122,6 +129,7 @@ public class MainController {
     private final TransferService transferService;
     private final SshConnectionService sshConnectionService;
     private final WorldComparisonService worldComparisonService;
+    private final WhitelistService whitelistService;
     private final ConnectionSettingsStore connectionSettingsStore;
     private final ObservableList<WorldEntry> localWorlds = FXCollections.observableArrayList();
     private final ObservableList<WorldEntry> remoteWorlds = FXCollections.observableArrayList();
@@ -133,11 +141,13 @@ public class MainController {
                 new StubTransferService(),
                 new SshConnectionService(),
                 new WorldComparisonService(),
+                new WhitelistService(),
                 new ConnectionSettingsStore());
     }
 
     public MainController(WorldService worldService, TransferService transferService) {
         this(worldService, transferService, new SshConnectionService(), new WorldComparisonService(),
+                new WhitelistService(),
                 new ConnectionSettingsStore());
     }
 
@@ -146,11 +156,13 @@ public class MainController {
             TransferService transferService,
             SshConnectionService sshConnectionService,
             WorldComparisonService worldComparisonService,
+            WhitelistService whitelistService,
             ConnectionSettingsStore connectionSettingsStore) {
         this.worldService = worldService;
         this.transferService = transferService;
         this.sshConnectionService = sshConnectionService;
         this.worldComparisonService = worldComparisonService;
+        this.whitelistService = whitelistService;
         this.connectionSettingsStore = connectionSettingsStore;
     }
 
@@ -158,8 +170,28 @@ public class MainController {
     private void initialize() {
         localWorldsList.setItems(localWorlds);
         localWorldsList.setCellFactory(listView -> new WorldCell(true));
+        localWorldsList.getSelectionModel().selectedItemProperty()
+                .addListener((obs, oldValue, newValue) -> syncTransferButtons());
+        localWorldsList.setOnMouseClicked(event -> {
+            if (event.getButton() == MouseButton.PRIMARY && event.getClickCount() == 2) {
+                WorldEntry selected = localWorldsList.getSelectionModel().getSelectedItem();
+                if (selected != null) {
+                    openWorldDetailsWindow(selected);
+                }
+            }
+        });
         remoteWorldsList.setItems(remoteWorlds);
         remoteWorldsList.setCellFactory(listView -> new WorldCell(false));
+        remoteWorldsList.getSelectionModel().selectedItemProperty()
+                .addListener((obs, oldValue, newValue) -> syncTransferButtons());
+        remoteWorldsList.setOnMouseClicked(event -> {
+            if (event.getButton() == MouseButton.PRIMARY && event.getClickCount() == 2) {
+                WorldEntry selected = remoteWorldsList.getSelectionModel().getSelectedItem();
+                if (selected != null) {
+                    openWorldDetailsWindow(selected);
+                }
+            }
+        });
         authTypeCombo.setItems(FXCollections.observableArrayList("Password", "Public Key"));
         authTypeCombo.getSelectionModel().selectFirst();
         authTypeCombo.valueProperty().addListener((obs, oldValue, newValue) -> updateAuthInputState());
@@ -197,7 +229,10 @@ public class MainController {
                     connectStatusLabel.setText(error == null ? "Connection failed." : error);
                 });
             }
-            Platform.runLater(() -> setRemoteConnectionBusy(false));
+            Platform.runLater(() -> {
+                setRemoteConnectionBusy(false);
+                syncTransferButtons();
+            });
         });
     }
 
@@ -255,6 +290,7 @@ public class MainController {
             Platform.runLater(() -> {
                 localWorlds.setAll(local);
                 remoteWorlds.clear();
+                syncTransferButtons();
             });
             return;
         }
@@ -268,12 +304,16 @@ public class MainController {
             for (WorldEntry world : remote) {
                 maybeLoadRemotePreviewAsync(world);
             }
+            syncTransferButtons();
         });
     }
 
     private void refreshRemoteWorlds() {
         if (!sshConnectionService.isConnected()) {
-            Platform.runLater(remoteWorlds::clear);
+            Platform.runLater(() -> {
+                remoteWorlds.clear();
+                syncTransferButtons();
+            });
             return;
         }
         List<WorldEntry> remote = worldService.listRemoteWorlds(buildRemoteProfile());
@@ -286,6 +326,7 @@ public class MainController {
             for (WorldEntry world : remote) {
                 maybeLoadRemotePreviewAsync(world);
             }
+            syncTransferButtons();
         });
     }
 
@@ -398,15 +439,7 @@ public class MainController {
 
     private void setTransferBusy(boolean busy, String statusText) {
         transferBusy = busy;
-        if (uploadButton != null) {
-            uploadButton.setDisable(busy);
-        }
-        if (downloadButton != null) {
-            downloadButton.setDisable(busy);
-        }
-        if (refreshButton != null) {
-            refreshButton.setDisable(busy);
-        }
+        syncTransferButtons();
         if (transferProgressIndicator != null) {
             transferProgressIndicator.setVisible(busy);
             transferProgressIndicator.setManaged(busy);
@@ -414,6 +447,25 @@ public class MainController {
         if (transferStatusLabel != null) {
             transferStatusLabel.setText(statusText == null ? "" : statusText);
         }
+    }
+
+    private void syncTransferButtons() {
+        boolean connected = isRemoteConnected();
+        boolean localSelected = localWorldsList != null && localWorldsList.getSelectionModel().getSelectedItem() != null;
+        boolean remoteSelected = remoteWorldsList != null && remoteWorldsList.getSelectionModel().getSelectedItem() != null;
+        if (uploadButton != null) {
+            uploadButton.setDisable(transferBusy || !connected || !localSelected);
+        }
+        if (downloadButton != null) {
+            downloadButton.setDisable(transferBusy || !connected || !remoteSelected);
+        }
+        if (refreshButton != null) {
+            refreshButton.setDisable(transferBusy);
+        }
+    }
+
+    protected boolean isRemoteConnected() {
+        return sshConnectionService.isConnected();
     }
 
     private void runTransferAsync(String runningText, String successText, Runnable transferWork) {
@@ -436,6 +488,149 @@ public class MainController {
             String status = finalStatus;
             Platform.runLater(() -> setTransferBusy(false, status));
         });
+    }
+
+    private void openWorldDetailsWindow(WorldEntry world) {
+        Stage stage = new Stage();
+        stage.initModality(Modality.NONE);
+        stage.setTitle("World Details - " + displayName(world));
+
+        Label nameLabel = new Label("Name: " + displayName(world));
+        Label folderLabel = new Label("Folder: " + valueOrUnknown(world.getId()));
+        Label gameModeLabel = new Label("GameMode: " + valueOrUnknown(world.getGameMode()));
+        Label patchLabel = new Label("Patch: " + valueOrUnknown(world.getPatchLine()));
+        Label lastPlayedLabel = new Label("Last played: " + formatLastPlayed(world.getLastModified()));
+
+        Label whitelistTitle = new Label("Whitelist");
+        CheckBox enabledCheckBox = new CheckBox("Whitelist enabled");
+        ListView<String> playerUuids = new ListView<>();
+        playerUuids.setPrefHeight(180);
+        TextField uuidInput = new TextField();
+        uuidInput.setPromptText("Player UUID");
+        Button addPlayerButton = new Button("Add UUID");
+        Button removePlayerButton = new Button("Remove Selected");
+        Button saveWhitelistButton = new Button("Save Whitelist");
+        Label whitelistStatus = new Label();
+
+        HBox addRow = new HBox(8, uuidInput, addPlayerButton);
+        addRow.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(uuidInput, Priority.ALWAYS);
+
+        HBox removeRow = new HBox(8, removePlayerButton, saveWhitelistButton);
+        removeRow.setAlignment(Pos.CENTER_LEFT);
+
+        VBox root = new VBox(
+                8,
+                nameLabel,
+                folderLabel,
+                gameModeLabel,
+                patchLabel,
+                lastPlayedLabel,
+                whitelistTitle,
+                enabledCheckBox,
+                playerUuids,
+                addRow,
+                removeRow,
+                whitelistStatus);
+        root.setFillWidth(true);
+        root.setStyle("-fx-padding: 12;");
+
+        Path localPath = world.getPath() == null ? null : Paths.get(world.getPath());
+        boolean editable = localPath != null && Files.isDirectory(localPath);
+
+        if (!editable) {
+            enabledCheckBox.setDisable(true);
+            playerUuids.setDisable(true);
+            uuidInput.setDisable(true);
+            addPlayerButton.setDisable(true);
+            removePlayerButton.setDisable(true);
+            saveWhitelistButton.setDisable(true);
+            whitelistStatus.setText("Whitelist editing is only available for local world folders.");
+        } else {
+            loadWhitelistIntoDialog(localPath, enabledCheckBox, playerUuids, whitelistStatus);
+
+            addPlayerButton.setOnAction(event -> {
+                String uuid = uuidInput.getText() == null ? "" : uuidInput.getText().trim();
+                if (uuid.isBlank() || !isLikelyUuid(uuid)) {
+                    whitelistStatus.setText("Invalid UUID format.");
+                    return;
+                }
+                if (!playerUuids.getItems().contains(uuid)) {
+                    playerUuids.getItems().add(uuid);
+                }
+                uuidInput.clear();
+                whitelistStatus.setText("");
+            });
+
+            removePlayerButton.setOnAction(event -> {
+                String selected = playerUuids.getSelectionModel().getSelectedItem();
+                if (selected != null) {
+                    playerUuids.getItems().remove(selected);
+                }
+            });
+
+            saveWhitelistButton.setOnAction(event -> {
+                try {
+                    whitelistService.save(
+                            localPath,
+                            new WhitelistService.WhitelistConfig(enabledCheckBox.isSelected(),
+                                    new ArrayList<>(playerUuids.getItems())));
+                    whitelistStatus.setText("Whitelist saved.");
+                } catch (IOException exception) {
+                    whitelistStatus.setText("Failed to save whitelist: " + exception.getMessage());
+                }
+            });
+        }
+
+        stage.setScene(new Scene(root, 520, 520));
+        stage.show();
+    }
+
+    private void loadWhitelistIntoDialog(
+            Path worldPath,
+            CheckBox enabledCheckBox,
+            ListView<String> playerUuids,
+            Label statusLabel) {
+        try {
+            WhitelistService.WhitelistConfig config = whitelistService.load(worldPath);
+            enabledCheckBox.setSelected(config.enabled());
+            playerUuids.setItems(FXCollections.observableArrayList(config.playerUuids()));
+            statusLabel.setText("");
+        } catch (IOException exception) {
+            enabledCheckBox.setSelected(true);
+            playerUuids.setItems(FXCollections.observableArrayList());
+            statusLabel.setText("Failed to load whitelist: " + exception.getMessage());
+        }
+    }
+
+    private String displayName(WorldEntry world) {
+        if (world == null) {
+            return "Unknown";
+        }
+        if (world.getName() != null && !world.getName().isBlank()) {
+            return world.getName();
+        }
+        return valueOrUnknown(world.getId());
+    }
+
+    private String valueOrUnknown(String value) {
+        if (value == null || value.isBlank()) {
+            return "Unknown";
+        }
+        return value;
+    }
+
+    private String formatLastPlayed(Instant value) {
+        if (value == null || value.equals(Instant.EPOCH)) {
+            return "Unknown";
+        }
+        return DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+                .withZone(ZoneId.systemDefault())
+                .format(value);
+    }
+
+    private boolean isLikelyUuid(String uuid) {
+        return uuid.matches("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
     }
 
     private void applyCachedConnectionSettings() {
