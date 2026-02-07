@@ -2,6 +2,7 @@
 .gradle/
 build/
 out/
+bin/
 
 # Local Gradle cache used in this workspace
 .gradle-home/
