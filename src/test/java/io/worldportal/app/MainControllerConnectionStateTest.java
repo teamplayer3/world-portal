@@ -12,6 +12,7 @@ import javafx.scene.control.TextField;
 import javafx.scene.layout.HBox;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Assumptions;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -22,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MainControllerConnectionStateTest {
+    private static volatile boolean javaFxAvailable = true;
 
     @BeforeAll
     static void startJavaFxRuntime() throws InterruptedException {
@@ -30,12 +32,16 @@ class MainControllerConnectionStateTest {
             Platform.startup(latch::countDown);
         } catch (IllegalStateException alreadyStarted) {
             latch.countDown();
+        } catch (UnsupportedOperationException headlessEnvironment) {
+            javaFxAvailable = false;
+            latch.countDown();
         }
         assertTrue(latch.await(5, TimeUnit.SECONDS));
     }
 
     @Test
     void busyStateDisablesRemoteInputsAndShowsLoadingIndicator() throws Exception {
+        Assumptions.assumeTrue(javaFxAvailable, "JavaFX runtime is not available in this environment");
         MainController controller = new MainController();
 
         TextField hostField = new TextField();
@@ -90,6 +96,7 @@ class MainControllerConnectionStateTest {
 
     @Test
     void transferBusyStateDisablesTransferButtonsAndShowsProgressIndicator() throws Exception {
+        Assumptions.assumeTrue(javaFxAvailable, "JavaFX runtime is not available in this environment");
         MainController controller = new MainController();
 
         Button uploadButton = new Button();
