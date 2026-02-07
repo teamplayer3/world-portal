@@ -69,7 +69,7 @@ tasks.register("packageAppImage") {
             "--java-options", "-Dprism.verbose=true"
         )
 
-        if (osName.contains("win")) {
+        if (osName.contains("win") && packageType != "app-image") {
             command.add("--win-menu")
             command.add("--win-shortcut")
             command.add("--win-dir-chooser")
