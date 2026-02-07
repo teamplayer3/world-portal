@@ -1,11 +1,14 @@
 package io.worldportal.app.ui;
 
+import io.worldportal.app.config.ConnectionSettingsStore;
 import io.worldportal.app.model.RemoteProfile;
 import io.worldportal.app.model.WorldEntry;
 import io.worldportal.app.service.TransferService;
 import io.worldportal.app.service.WorldService;
+import io.worldportal.app.service.impl.SshConnectionService;
 import io.worldportal.app.service.impl.StubTransferService;
 import io.worldportal.app.service.impl.StubWorldService;
+import io.worldportal.app.service.impl.WorldComparisonService;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
@@ -19,6 +22,7 @@ import javafx.scene.control.ListView;
 import javafx.scene.control.TextField;
 import javafx.scene.control.Button;
 import javafx.scene.control.PasswordField;
+import javafx.scene.control.ProgressIndicator;
 import javafx.scene.Group;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
@@ -39,6 +43,8 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class MainController {
@@ -82,25 +88,78 @@ public class MainController {
     @FXML
     private Button refreshKeysButton;
 
+    @FXML
+    private HBox publicKeyContainer;
+
+    @FXML
+    private Label connectStatusLabel;
+
+    @FXML
+    private Button connectButton;
+
+    @FXML
+    private ProgressIndicator connectLoadingIndicator;
+
+    @FXML
+    private Button uploadButton;
+
+    @FXML
+    private Button downloadButton;
+
+    @FXML
+    private Button refreshButton;
+
+    @FXML
+    private ProgressIndicator transferProgressIndicator;
+
+    @FXML
+    private Label transferStatusLabel;
+
+    private volatile boolean remoteConnectionBusy;
+    private volatile boolean transferBusy;
+
     private final WorldService worldService;
     private final TransferService transferService;
+    private final SshConnectionService sshConnectionService;
+    private final WorldComparisonService worldComparisonService;
+    private final ConnectionSettingsStore connectionSettingsStore;
     private final ObservableList<WorldEntry> localWorlds = FXCollections.observableArrayList();
     private final ObservableList<WorldEntry> remoteWorlds = FXCollections.observableArrayList();
+    private final ConcurrentHashMap<String, Boolean> remotePreviewLoading = new ConcurrentHashMap<>();
 
     public MainController() {
-        this(new StubWorldService(), new StubTransferService());
+        this(
+                new StubWorldService(),
+                new StubTransferService(),
+                new SshConnectionService(),
+                new WorldComparisonService(),
+                new ConnectionSettingsStore());
     }
 
     public MainController(WorldService worldService, TransferService transferService) {
+        this(worldService, transferService, new SshConnectionService(), new WorldComparisonService(),
+                new ConnectionSettingsStore());
+    }
+
+    MainController(
+            WorldService worldService,
+            TransferService transferService,
+            SshConnectionService sshConnectionService,
+            WorldComparisonService worldComparisonService,
+            ConnectionSettingsStore connectionSettingsStore) {
         this.worldService = worldService;
         this.transferService = transferService;
+        this.sshConnectionService = sshConnectionService;
+        this.worldComparisonService = worldComparisonService;
+        this.connectionSettingsStore = connectionSettingsStore;
     }
 
     @FXML
     private void initialize() {
         localWorldsList.setItems(localWorlds);
-        localWorldsList.setCellFactory(listView -> new LocalWorldCell());
+        localWorldsList.setCellFactory(listView -> new WorldCell(true));
         remoteWorldsList.setItems(remoteWorlds);
+        remoteWorldsList.setCellFactory(listView -> new WorldCell(false));
         authTypeCombo.setItems(FXCollections.observableArrayList("Password", "Public Key"));
         authTypeCombo.getSelectionModel().selectFirst();
         authTypeCombo.valueProperty().addListener((obs, oldValue, newValue) -> updateAuthInputState());
@@ -108,15 +167,38 @@ public class MainController {
         if (!publicKeyFileCombo.getItems().isEmpty()) {
             publicKeyFileCombo.getSelectionModel().selectFirst();
         }
-        updateAuthInputState();
         portField.setText("22");
         localWorldsPathField.setText(defaultLocalWorldsPath());
+
+        applyCachedConnectionSettings();
+        setRemoteConnectionBusy(false);
+        setTransferBusy(false, "");
+        updateAuthInputState();
         refreshLists();
     }
 
     @FXML
     private void onConnect() {
-        runAsync(this::refreshRemoteWorlds);
+        if (remoteConnectionBusy) {
+            return;
+        }
+        setRemoteConnectionBusy(true);
+        Platform.runLater(() -> connectStatusLabel.setText(""));
+        runAsync(() -> {
+            boolean connected = sshConnectionService.connect(buildRemoteProfile());
+            if (connected) {
+                connectionSettingsStore.save(buildRemoteProfile());
+                Platform.runLater(() -> connectStatusLabel.setText(""));
+                refreshRemoteWorlds();
+            } else {
+                Platform.runLater(() -> {
+                    remoteWorlds.clear();
+                    String error = sshConnectionService.getLastErrorMessage();
+                    connectStatusLabel.setText(error == null ? "Connection failed." : error);
+                });
+            }
+            Platform.runLater(() -> setRemoteConnectionBusy(false));
+        });
     }
 
     @FXML
@@ -125,7 +207,13 @@ public class MainController {
         if (selectedWorld == null) {
             return;
         }
-        runAsync(() -> transferService.uploadWorld(selectedWorld, buildRemoteProfile()));
+        runTransferAsync(
+                "Uploading...",
+                "Upload finished.",
+                () -> {
+                    transferService.uploadWorld(selectedWorld, buildRemoteProfile());
+                    refreshLists();
+                });
     }
 
     @FXML
@@ -134,14 +222,20 @@ public class MainController {
         if (selectedWorld == null) {
             return;
         }
-        runAsync(() -> {
-            transferService.downloadWorld(selectedWorld, buildRemoteProfile());
-            refreshLists();
-        });
+        runTransferAsync(
+                "Downloading...",
+                "Download finished.",
+                () -> {
+                    transferService.downloadWorld(selectedWorld, buildRemoteProfile());
+                    refreshLists();
+                });
     }
 
     @FXML
     private void onRefresh() {
+        if (transferBusy) {
+            return;
+        }
         runAsync(this::refreshLists);
     }
 
@@ -156,13 +250,43 @@ public class MainController {
 
     private void refreshLists() {
         List<WorldEntry> local = worldService.listLocalWorlds(getConfiguredLocalWorldsPath());
-        Platform.runLater(() -> localWorlds.setAll(local));
-        refreshRemoteWorlds();
+        if (!sshConnectionService.isConnected()) {
+            worldComparisonService.annotateMatches(local, List.of());
+            Platform.runLater(() -> {
+                localWorlds.setAll(local);
+                remoteWorlds.clear();
+            });
+            return;
+        }
+
+        List<WorldEntry> remote = worldService.listRemoteWorlds(buildRemoteProfile());
+        worldComparisonService.annotateMatches(local, remote);
+
+        Platform.runLater(() -> {
+            localWorlds.setAll(local);
+            remoteWorlds.setAll(remote);
+            for (WorldEntry world : remote) {
+                maybeLoadRemotePreviewAsync(world);
+            }
+        });
     }
 
     private void refreshRemoteWorlds() {
+        if (!sshConnectionService.isConnected()) {
+            Platform.runLater(remoteWorlds::clear);
+            return;
+        }
         List<WorldEntry> remote = worldService.listRemoteWorlds(buildRemoteProfile());
-        Platform.runLater(() -> remoteWorlds.setAll(remote));
+        List<WorldEntry> local = worldService.listLocalWorlds(getConfiguredLocalWorldsPath());
+        worldComparisonService.annotateMatches(local, remote);
+
+        Platform.runLater(() -> {
+            localWorlds.setAll(local);
+            remoteWorlds.setAll(remote);
+            for (WorldEntry world : remote) {
+                maybeLoadRemotePreviewAsync(world);
+            }
+        });
     }
 
     private RemoteProfile buildRemoteProfile() {
@@ -180,8 +304,7 @@ public class MainController {
                 authTypeCombo.getValue(),
                 passwordField.getText(),
                 publicKeyFileCombo.getValue(),
-                getConfiguredLocalWorldsPath()
-        );
+                getConfiguredLocalWorldsPath());
     }
 
     public WorldService getWorldService() {
@@ -216,18 +339,145 @@ public class MainController {
     }
 
     private void updateAuthInputState() {
-        boolean publicKeySelected = "Public Key".equalsIgnoreCase(authTypeCombo.getValue());
-        passwordField.setVisible(!publicKeySelected);
-        passwordField.setManaged(!publicKeySelected);
-        passwordLabel.setVisible(!publicKeySelected);
-        passwordLabel.setManaged(!publicKeySelected);
+        if (remoteConnectionBusy) {
+            passwordField.setDisable(true);
+            passwordLabel.setDisable(true);
+            publicKeyFileCombo.setDisable(true);
+            publicKeyFileLabel.setDisable(true);
+            refreshKeysButton.setDisable(true);
+            publicKeyContainer.setDisable(true);
+            publicKeyContainer.setMouseTransparent(true);
+            return;
+        }
 
-        publicKeyFileCombo.setVisible(publicKeySelected);
-        publicKeyFileCombo.setManaged(publicKeySelected);
-        publicKeyFileLabel.setVisible(publicKeySelected);
-        publicKeyFileLabel.setManaged(publicKeySelected);
-        refreshKeysButton.setVisible(publicKeySelected);
-        refreshKeysButton.setManaged(publicKeySelected);
+        boolean publicKeySelected = "Public Key".equalsIgnoreCase(authTypeCombo.getValue());
+
+        boolean showPassword = !publicKeySelected;
+        boolean showPublicKey = publicKeySelected;
+
+        passwordField.setVisible(showPassword);
+        passwordField.setManaged(showPassword);
+        passwordField.setDisable(!showPassword);
+        passwordLabel.setVisible(showPassword);
+        passwordLabel.setManaged(showPassword);
+        passwordLabel.setDisable(!showPassword);
+
+        publicKeyFileCombo.setVisible(showPublicKey);
+        publicKeyFileCombo.setManaged(showPublicKey);
+        publicKeyFileCombo.setDisable(!showPublicKey);
+        publicKeyFileLabel.setVisible(showPublicKey);
+        publicKeyFileLabel.setManaged(showPublicKey);
+        publicKeyFileLabel.setDisable(!showPublicKey);
+        refreshKeysButton.setVisible(showPublicKey);
+        refreshKeysButton.setManaged(showPublicKey);
+        refreshKeysButton.setDisable(!showPublicKey);
+
+        publicKeyContainer.setVisible(showPublicKey);
+        publicKeyContainer.setManaged(showPublicKey);
+        publicKeyContainer.setDisable(!showPublicKey);
+        publicKeyContainer.setMouseTransparent(!showPublicKey);
+    }
+
+    private void setRemoteConnectionBusy(boolean busy) {
+        remoteConnectionBusy = busy;
+
+        hostField.setDisable(busy);
+        portField.setDisable(busy);
+        usernameField.setDisable(busy);
+        remotePathField.setDisable(busy);
+        authTypeCombo.setDisable(busy);
+        if (connectButton != null) {
+            connectButton.setDisable(busy);
+        }
+        if (connectLoadingIndicator != null) {
+            connectLoadingIndicator.setVisible(busy);
+            connectLoadingIndicator.setManaged(busy);
+        }
+        updateAuthInputState();
+    }
+
+    private void setTransferBusy(boolean busy, String statusText) {
+        transferBusy = busy;
+        if (uploadButton != null) {
+            uploadButton.setDisable(busy);
+        }
+        if (downloadButton != null) {
+            downloadButton.setDisable(busy);
+        }
+        if (refreshButton != null) {
+            refreshButton.setDisable(busy);
+        }
+        if (transferProgressIndicator != null) {
+            transferProgressIndicator.setVisible(busy);
+            transferProgressIndicator.setManaged(busy);
+        }
+        if (transferStatusLabel != null) {
+            transferStatusLabel.setText(statusText == null ? "" : statusText);
+        }
+    }
+
+    private void runTransferAsync(String runningText, String successText, Runnable transferWork) {
+        if (transferBusy) {
+            return;
+        }
+        setTransferBusy(true, runningText);
+        runAsync(() -> {
+            String finalStatus = successText;
+            try {
+                transferWork.run();
+            } catch (Exception exception) {
+                String message = exception.getMessage();
+                if (message == null || message.isBlank()) {
+                    finalStatus = "Transfer failed.";
+                } else {
+                    finalStatus = "Transfer failed: " + message;
+                }
+            }
+            String status = finalStatus;
+            Platform.runLater(() -> setTransferBusy(false, status));
+        });
+    }
+
+    private void applyCachedConnectionSettings() {
+        RemoteProfile cached = connectionSettingsStore.load();
+        if (cached == null) {
+            return;
+        }
+
+        if (cached.getHost() != null && !cached.getHost().isBlank()) {
+            hostField.setText(cached.getHost());
+        }
+        if (cached.getPort() > 0) {
+            portField.setText(Integer.toString(cached.getPort()));
+        }
+        if (cached.getUsername() != null && !cached.getUsername().isBlank()) {
+            usernameField.setText(cached.getUsername());
+        }
+        if (cached.getRemoteBasePath() != null && !cached.getRemoteBasePath().isBlank()) {
+            remotePathField.setText(cached.getRemoteBasePath());
+        }
+        if (cached.getLocalWorldsPath() != null && !cached.getLocalWorldsPath().isBlank()) {
+            localWorldsPathField.setText(cached.getLocalWorldsPath());
+        }
+        if (cached.getPassword() != null && !cached.getPassword().isBlank()) {
+            passwordField.setText(cached.getPassword());
+        }
+
+        String authType = cached.getAuthType();
+        if (authType != null && !authType.isBlank()) {
+            if (!authTypeCombo.getItems().contains(authType)) {
+                authTypeCombo.getItems().add(authType);
+            }
+            authTypeCombo.getSelectionModel().select(authType);
+        }
+
+        String publicKeyFile = cached.getPublicKeyFilePath();
+        if (publicKeyFile != null && !publicKeyFile.isBlank()) {
+            if (!publicKeyFileCombo.getItems().contains(publicKeyFile)) {
+                publicKeyFileCombo.getItems().add(publicKeyFile);
+            }
+            publicKeyFileCombo.getSelectionModel().select(publicKeyFile);
+        }
     }
 
     private List<String> loadPublicKeyFiles() {
@@ -258,19 +508,53 @@ public class MainController {
         worker.start();
     }
 
-    private static class LocalWorldCell extends ListCell<WorldEntry> {
-        private static final DateTimeFormatter LAST_PLAYED_FORMATTER =
-                DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneId.systemDefault());
+    private void maybeLoadRemotePreviewAsync(WorldEntry world) {
+        if (world == null || world.getId() == null || world.getId().isBlank()) {
+            return;
+        }
+        if (world.getPreviewImagePath() != null && !world.getPreviewImagePath().isBlank()) {
+            File preview = new File(world.getPreviewImagePath());
+            if (preview.exists() && preview.length() > 0) {
+                return;
+            }
+        }
+
+        String key = world.getId();
+        if (remotePreviewLoading.putIfAbsent(key, Boolean.TRUE) != null) {
+            return;
+        }
+
+        Thread loader = new Thread(() -> {
+            try {
+                String previewPath = worldService.downloadRemotePreview(world, buildRemoteProfile());
+                if (previewPath != null && !previewPath.isBlank()) {
+                    world.setPreviewImagePath(previewPath);
+                    Platform.runLater(() -> remoteWorldsList.refresh());
+                }
+            } finally {
+                remotePreviewLoading.remove(key);
+            }
+        }, "remote-preview-loader");
+        loader.setDaemon(true);
+        loader.start();
+    }
+
+    private static class WorldCell extends ListCell<WorldEntry> {
+        private static final DateTimeFormatter LAST_PLAYED_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+                .withZone(ZoneId.systemDefault());
 
         private final ImageView previewImageView = new ImageView();
         private final Label nameLabel = new Label();
         private final Label metaLabel = new Label();
         private final Label lastPlayedLabel = new Label();
-        private final VBox textContainer = new VBox(4.0, nameLabel, metaLabel, lastPlayedLabel);
+        private final Label sameAsLabel = new Label();
+        private final VBox textContainer = new VBox(4.0, nameLabel, metaLabel, lastPlayedLabel, sameAsLabel);
         private final Button openDirectoryButton = new Button("Open Dir");
         private final HBox content = new HBox(10.0, previewImageView, textContainer, openDirectoryButton);
+        private final boolean openDirectoryEnabled;
 
-        private LocalWorldCell() {
+        private WorldCell(boolean openDirectoryEnabled) {
+            this.openDirectoryEnabled = openDirectoryEnabled;
             previewImageView.setFitWidth(96);
             previewImageView.setFitHeight(54);
             previewImageView.setPreserveRatio(true);
@@ -279,7 +563,12 @@ public class MainController {
             openDirectoryButton.setText(null);
             openDirectoryButton.setGraphic(createFolderIcon());
             openDirectoryButton.setFocusTraversable(false);
+            openDirectoryButton.setDisable(!openDirectoryEnabled);
             openDirectoryButton.setOnAction(event -> {
+                if (!openDirectoryEnabled) {
+                    event.consume();
+                    return;
+                }
                 WorldEntry currentItem = getItem();
                 if (currentItem != null) {
                     openDirectory(currentItem.getPath());
@@ -298,8 +587,15 @@ public class MainController {
             }
 
             nameLabel.setText(displayNameWithFolder(item));
-            metaLabel.setText("GameMode: " + valueOrUnknown(item.getGameMode()) + "  |  Patch: " + valueOrUnknown(item.getPatchLine()));
+            metaLabel.setText("GameMode: " + valueOrUnknown(item.getGameMode()) + "  |  Patch: "
+                    + valueOrUnknown(item.getPatchLine()));
             lastPlayedLabel.setText("Last played: " + formatLastPlayed(item.getLastModified()));
+
+            String sameAsText = sameAsText(item, openDirectoryEnabled ? "remote" : "local");
+            boolean hasSameAs = sameAsText != null && !sameAsText.isBlank();
+            sameAsLabel.setText(hasSameAs ? sameAsText : "");
+            sameAsLabel.setVisible(hasSameAs);
+            sameAsLabel.setManaged(hasSameAs);
 
             if (item.getPreviewImagePath() != null && !item.getPreviewImagePath().isBlank()) {
                 File previewImage = new File(item.getPreviewImagePath());
@@ -327,6 +623,30 @@ public class MainController {
                 return "Unknown";
             }
             return value;
+        }
+
+        private String sameAsText(WorldEntry item, String otherSide) {
+            List<WorldEntry> refs = item.getSameWorldReferences();
+            if (refs == null || refs.isEmpty()) {
+                return "";
+            }
+            String names = refs.stream()
+                    .map(this::displayName)
+                    .collect(Collectors.joining(", "));
+            return "same as: " + otherSide + " " + names;
+        }
+
+        private String displayName(WorldEntry world) {
+            if (world == null) {
+                return "Unknown";
+            }
+            if (world.getName() != null && !world.getName().isBlank()) {
+                return world.getName();
+            }
+            if (world.getId() != null && !world.getId().isBlank()) {
+                return world.getId();
+            }
+            return "Unknown";
         }
 
         private String displayNameWithFolder(WorldEntry item) {

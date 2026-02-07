@@ -25,6 +25,8 @@ import java.util.stream.Stream;
 public class StubWorldService implements WorldService {
     private static final Pattern DISPLAY_NAME_PATTERN = Pattern.compile("\"DisplayName\"\\s*:\\s*\"([^\"]+)\"");
     private static final Pattern GAME_MODE_PATTERN = Pattern.compile("\"GameMode\"\\s*:\\s*\"([^\"]+)\"");
+    private static final Pattern UUID_BINARY_PATTERN = Pattern.compile("\"UUID\"\\s*:\\s*\\{[^}]*\"\\$binary\"\\s*:\\s*\"([^\"]+)\"", Pattern.DOTALL);
+    private static final Pattern GAME_TIME_PATTERN = Pattern.compile("\"GameTime\"\\s*:\\s*\"([^\"]+)\"");
     private static final Pattern PATCH_LINE_PATTERN = Pattern.compile("\"CreatedWithPatchline\"\\s*:\\s*\"([^\"]+)\"");
 
     @Override
@@ -85,6 +87,8 @@ public class StubWorldService implements WorldService {
                 String metadataPath = worldPath + "/client_metadata.json";
                 String displayName = readRemoteValue(channel, configPath, DISPLAY_NAME_PATTERN, name);
                 String gameMode = readRemoteValue(channel, configPath, GAME_MODE_PATTERN, "Unknown");
+                String uuidBinary = readRemoteValue(channel, configPath, UUID_BINARY_PATTERN, null);
+                String gameTime = readRemoteValue(channel, configPath, GAME_TIME_PATTERN, null);
                 String patchLine = readRemoteValue(channel, metadataPath, PATCH_LINE_PATTERN, "Unknown");
 
                 Instant lastPlayed;
@@ -99,11 +103,14 @@ public class StubWorldService implements WorldService {
                         name,
                         displayName,
                         worldPath,
-                        null,
+                        previewCacheFile(profile, new WorldEntry(name, displayName, worldPath, null, null, null, lastPlayed)).toString(),
                         gameMode,
                         patchLine,
                         lastPlayed
                 ));
+                WorldEntry added = result.get(result.size() - 1);
+                added.setUuidBinary(uuidBinary);
+                added.setGameTimeIso(gameTime);
             }
 
             result.sort((left, right) -> right.getLastModified().compareTo(left.getLastModified()));
@@ -128,6 +135,8 @@ public class StubWorldService implements WorldService {
 
         String name = readDisplayName(worldConfig);
         String gameMode = readValue(worldConfig, GAME_MODE_PATTERN, "Unknown");
+        String uuidBinary = readValue(worldConfig, UUID_BINARY_PATTERN, null);
+        String gameTime = readValue(worldConfig, GAME_TIME_PATTERN, null);
 
         Path clientMetadata = worldDirectory.resolve("client_metadata.json");
         String patchLine = readValue(clientMetadata, PATCH_LINE_PATTERN, "Unknown");
@@ -139,7 +148,7 @@ public class StubWorldService implements WorldService {
         }
 
         Instant lastPlayed = readLastPlayed(worldConfig);
-        return new WorldEntry(
+        WorldEntry localWorld = new WorldEntry(
                 worldDirectory.getFileName().toString(),
                 name,
                 worldDirectory.toString(),
@@ -148,6 +157,9 @@ public class StubWorldService implements WorldService {
                 patchLine,
                 lastPlayed
         );
+        localWorld.setUuidBinary(uuidBinary);
+        localWorld.setGameTimeIso(gameTime);
+        return localWorld;
     }
 
     private String readDisplayName(Path worldConfig) {
@@ -192,5 +204,58 @@ public class StubWorldService implements WorldService {
         } catch (Exception ignored) {
         }
         return fallback;
+    }
+
+    @Override
+    public String downloadRemotePreview(WorldEntry world, RemoteProfile profile) {
+        if (world == null || profile == null || world.getPath() == null || world.getPath().isBlank()) {
+            return null;
+        }
+
+        Path cacheFile = previewCacheFile(profile, world);
+        try {
+            if (Files.exists(cacheFile) && Files.size(cacheFile) > 0) {
+                return cacheFile.toString();
+            }
+        } catch (IOException ignored) {
+        }
+
+        Session session = null;
+        ChannelSftp channel = null;
+        try {
+            Files.createDirectories(cacheFile.getParent());
+            session = SshSessionFactory.createConnectedSession(profile);
+            channel = (ChannelSftp) session.openChannel("sftp");
+            channel.connect(15000);
+
+            String remotePreview = world.getPath() + "/preview.png";
+            channel.get(remotePreview, cacheFile.toString());
+
+            if (Files.exists(cacheFile) && Files.size(cacheFile) > 0) {
+                return cacheFile.toString();
+            }
+            return null;
+        } catch (Exception exception) {
+            return null;
+        } finally {
+            if (channel != null && channel.isConnected()) {
+                channel.disconnect();
+            }
+            if (session != null && session.isConnected()) {
+                session.disconnect();
+            }
+        }
+    }
+
+    Path previewCacheFile(RemoteProfile profile, WorldEntry world) {
+        String host = profile != null && profile.getHost() != null && !profile.getHost().isBlank() ? profile.getHost() : "unknown-host";
+        String worldId = world != null && world.getId() != null && !world.getId().isBlank() ? world.getId() : "unknown-world";
+
+        Path cacheDir = Paths.get(System.getProperty("java.io.tmpdir"), "world-portal", "remote-previews", sanitize(host));
+        return cacheDir.resolve(sanitize(worldId) + ".png");
+    }
+
+    private String sanitize(String raw) {
+        return raw.replaceAll("[^a-zA-Z0-9._-]", "_");
     }
 }

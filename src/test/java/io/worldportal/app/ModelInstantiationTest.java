@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ModelInstantiationTest {
 
@@ -20,7 +21,13 @@ class ModelInstantiationTest {
         worldEntry.setPreviewImagePath("/home/user/worlds/creative/preview.png");
         worldEntry.setGameMode("Adventure");
         worldEntry.setPatchLine("pre-release");
+        worldEntry.setUuidBinary("abc123");
+        worldEntry.setGameTimeIso("2026-02-07T12:00:00Z");
         worldEntry.setLastModified(now);
+
+        WorldEntry sameWorld = new WorldEntry();
+        sameWorld.setName("RemoteProd");
+        worldEntry.addSameWorldReference(sameWorld);
 
         assertEquals("w-1", worldEntry.getId());
         assertEquals("Creative World", worldEntry.getName());
@@ -28,6 +35,10 @@ class ModelInstantiationTest {
         assertEquals("/home/user/worlds/creative/preview.png", worldEntry.getPreviewImagePath());
         assertEquals("Adventure", worldEntry.getGameMode());
         assertEquals("pre-release", worldEntry.getPatchLine());
+        assertEquals("abc123", worldEntry.getUuidBinary());
+        assertEquals("2026-02-07T12:00:00Z", worldEntry.getGameTimeIso());
+        assertEquals(1, worldEntry.getSameWorldReferences().size());
+        assertTrue(worldEntry.getSameWorldReferences().contains(sameWorld));
         assertEquals(now, worldEntry.getLastModified());
     }
 

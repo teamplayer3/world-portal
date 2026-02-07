@@ -9,4 +9,8 @@ public interface WorldService {
     List<WorldEntry> listLocalWorlds(String localWorldsPath);
 
     List<WorldEntry> listRemoteWorlds(RemoteProfile profile);
+
+    default String downloadRemotePreview(WorldEntry world, RemoteProfile profile) {
+        return null;
+    }
 }
