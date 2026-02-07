@@ -1,6 +1,6 @@
 # world-portal
 
-Desktop JavaFX app to move Hytale worlds between your local installation and an SSH server.
+Desktop App to move Hytale worlds between your local installation and an SSH server.
 
 ## For Users
 
@@ -26,6 +26,12 @@ The app transfers only this subset of world content:
 - `preview.png`
 - `universe/`
 - `whitelist.json`
+- `logs/`
+
+
+<img src="docs/ui.png" alt="App UI" width="600">
+
+## For Developers
 
 ### Run
 With Gradle wrapper:
@@ -59,26 +65,9 @@ Output:
 build/jpackage/out
 ```
 
-## For Developers
-
 ### Tech Stack
 - Java 23+
 - Gradle 8.x
 - JavaFX 25
 - JSch 2.27.2
 - JUnit 5
-
-### Project Notes
-- Main UI/controller: `src/main/java/io/worldportal/app/ui/MainController.java`
-- Transfer implementation: `src/main/java/io/worldportal/app/service/impl/StubTransferService.java`
-- Whitelist read/write: `src/main/java/io/worldportal/app/service/impl/WhitelistService.java`
-- Transfer and UI state tests exist under `src/test/java/io/worldportal/app/`
-- JavaFX-specific controller tests are CI-safe in headless environments
-
-### CI / Release
-Release workflow is in `.github/workflows/release.yml`:
-- builds on Linux/macOS/Windows
-- runs tests
-- packages with `jpackage`
-- uploads artifacts
-- publishes release for `v*` tags
