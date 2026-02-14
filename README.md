@@ -1,4 +1,8 @@
-# world-portal
+<p align="center">
+  <img src="docs/app_image.png" alt="world-portal icon" width="160">
+</p>
+
+# World Portal
 
 Desktop App to move Hytale worlds between your local installation and an SSH server.
 

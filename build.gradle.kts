@@ -50,6 +50,8 @@ tasks.register("packageAppImage") {
         val appVersion = project.version.toString().substringBefore("-")
         val packageType = providers.gradleProperty("jpackageType").orElse("app-image").get()
         val osName = System.getProperty("os.name").lowercase()
+        val windowsIcon = layout.projectDirectory.file("packaging/icons/windows/app_image.ico").asFile
+        val linuxIcon = layout.projectDirectory.file("packaging/icons/linux/app_image_512_512.png").asFile
 
         copy {
             from(jarFile)
@@ -68,6 +70,16 @@ tasks.register("packageAppImage") {
             "--java-options", "-Dworldportal.debug=true",
             "--java-options", "-Dprism.verbose=true"
         )
+
+        if (osName.contains("win") && windowsIcon.exists()) {
+            command.add("--icon")
+            command.add(windowsIcon.absolutePath)
+        }
+
+        if (osName.contains("linux") && linuxIcon.exists()) {
+            command.add("--icon")
+            command.add(linuxIcon.absolutePath)
+        }
 
         if (osName.contains("win") && packageType != "app-image") {
             command.add("--win-menu")
