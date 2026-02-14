@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.CheckBox?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ListView?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Priority?>
+<?import javafx.scene.layout.Region?>
+<?import javafx.scene.layout.VBox?>
+
+<VBox fx:id="detailsRoot" fillWidth="true" spacing="6.0" styleClass="app-root details-root" xmlns="http://javafx.com/javafx/25" xmlns:fx="http://javafx.com/fxml/1">
+    <children>
+        <HBox fx:id="detailsWindowDragBar" alignment="CENTER_RIGHT" spacing="8.0">
+            <padding>
+                <Insets top="0.0" right="8.0" bottom="2.0" left="8.0"/>
+            </padding>
+            <children>
+                <Region HBox.hgrow="ALWAYS"/>
+                <Button fx:id="detailsWindowMinimizeButton" mnemonicParsing="false" text="—"/>
+                <Button fx:id="detailsWindowCloseButton" mnemonicParsing="false" text="✕"/>
+            </children>
+        </HBox>
+
+        <VBox fillWidth="true" spacing="8.0">
+            <padding>
+                <Insets top="12.0" right="12.0" bottom="12.0" left="12.0"/>
+            </padding>
+            <children>
+                <Label fx:id="detailsNameLabel"/>
+                <Label fx:id="detailsFolderLabel"/>
+                <Label fx:id="detailsGameModeLabel"/>
+                <Label fx:id="detailsPatchLabel"/>
+                <Label fx:id="detailsLastPlayedLabel"/>
+                <Label fx:id="detailsWhitelistTitle" text="Whitelist"/>
+                <CheckBox fx:id="detailsWhitelistEnabledCheckBox" mnemonicParsing="false" text="Whitelist enabled"/>
+                <ListView fx:id="detailsWhitelistList" prefHeight="180.0"/>
+                <HBox alignment="CENTER_LEFT" spacing="8.0">
+                    <children>
+                        <TextField fx:id="detailsUuidInput" promptText="Player UUID" HBox.hgrow="ALWAYS"/>
+                        <Button fx:id="detailsAddUuidButton" mnemonicParsing="false" text="Add UUID"/>
+                    </children>
+                </HBox>
+                <HBox alignment="CENTER_LEFT" spacing="8.0">
+                    <children>
+                        <Button fx:id="detailsRemoveUuidButton" mnemonicParsing="false" text="Remove Selected"/>
+                        <Button fx:id="detailsSaveWhitelistButton" mnemonicParsing="false" text="Save Whitelist"/>
+                    </children>
+                </HBox>
+                <Label fx:id="detailsWhitelistStatusLabel"/>
+            </children>
+        </VBox>
+    </children>
+</VBox>

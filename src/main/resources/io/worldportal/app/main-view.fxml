@@ -16,31 +16,37 @@
 <?import javafx.scene.layout.Region?>
 <?import javafx.scene.layout.VBox?>
 
-<BorderPane prefHeight="620.0" prefWidth="980.0" xmlns="http://javafx.com/javafx/25" xmlns:fx="http://javafx.com/fxml/1" fx:controller="io.worldportal.app.ui.MainController">
+<BorderPane prefHeight="620.0" prefWidth="980.0" styleClass="app-root" stylesheets="@main-view.css" xmlns="http://javafx.com/javafx/25" xmlns:fx="http://javafx.com/fxml/1" fx:controller="io.worldportal.app.ui.MainController">
     <top>
-        <VBox spacing="10.0">
+        <VBox spacing="6.0" styleClass="top-section">
             <children>
-                <Label text="world-portal">
+                <HBox fx:id="windowDragBar" alignment="CENTER_RIGHT" styleClass="window-drag-bar">
                     <padding>
-                        <Insets top="16.0" right="16.0" bottom="4.0" left="16.0"/>
+                        <Insets top="0.0" right="8.0" bottom="2.0" left="8.0"/>
                     </padding>
-                    <style>
-                        -fx-font-size: 20px;
-                        -fx-font-weight: bold;
-                    </style>
+                    <children>
+                        <Region HBox.hgrow="ALWAYS"/>
+                        <Button fx:id="minimizeButton" mnemonicParsing="false" styleClass="window-button" text="—"/>
+                        <Button fx:id="closeButton" mnemonicParsing="false" styleClass="window-close-square-button" text="✕"/>
+                    </children>
+                </HBox>
+                <Label styleClass="app-title" text="World Portal">
+                    <padding>
+                        <Insets top="0.0" right="16.0" bottom="4.0" left="16.0"/>
+                    </padding>
                 </Label>
-                <HBox spacing="16.0">
+                <HBox spacing="16.0" styleClass="connection-columns">
                     <padding>
                         <Insets top="0.0" right="16.0" bottom="12.0" left="16.0"/>
                     </padding>
                     <children>
-                        <VBox spacing="8.0" HBox.hgrow="ALWAYS">
+                        <VBox spacing="8.0" styleClass="connection-panel" HBox.hgrow="ALWAYS">
                             <children>
-                                <Label text="Local"/>
-                                <GridPane hgap="8.0" vgap="8.0">
+                                <Label styleClass="panel-title" text="Local"/>
+                                <GridPane hgap="8.0" styleClass="connection-grid" vgap="8.0">
                                     <children>
-                                        <Label text="Local Worlds Path" GridPane.columnIndex="0" GridPane.rowIndex="0"/>
-                                        <TextField fx:id="localWorldsPathField" promptText="/path/to/local/worlds" GridPane.columnIndex="1" GridPane.rowIndex="0"/>
+                                        <Label styleClass="field-label" text="Local Worlds Path" GridPane.columnIndex="0" GridPane.rowIndex="0"/>
+                                        <TextField fx:id="localWorldsPathField" promptText="/path/to/local/worlds" styleClass="neon-input" GridPane.columnIndex="1" GridPane.rowIndex="0"/>
                                     </children>
                                     <columnConstraints>
                                         <javafx.scene.layout.ColumnConstraints hgrow="SOMETIMES" minWidth="120.0"/>
@@ -50,40 +56,40 @@
                             </children>
                         </VBox>
 
-                        <VBox spacing="8.0" HBox.hgrow="ALWAYS">
+                        <VBox spacing="8.0" styleClass="connection-panel" HBox.hgrow="ALWAYS">
                             <children>
-                                <Label text="Remote Connection"/>
-                                <GridPane hgap="8.0" vgap="8.0">
+                                <Label styleClass="panel-title" text="Remote Connection"/>
+                                <GridPane hgap="8.0" styleClass="connection-grid" vgap="8.0">
                                     <children>
-                                        <Label text="Host" GridPane.columnIndex="0" GridPane.rowIndex="0"/>
-                                        <TextField fx:id="hostField" promptText="example.com" GridPane.columnIndex="1" GridPane.rowIndex="0"/>
-                                        <Label text="Port" GridPane.columnIndex="2" GridPane.rowIndex="0"/>
-                                        <TextField fx:id="portField" promptText="22" GridPane.columnIndex="3" GridPane.rowIndex="0"/>
+                                        <Label styleClass="field-label" text="Host" GridPane.columnIndex="0" GridPane.rowIndex="0"/>
+                                        <TextField fx:id="hostField" promptText="example.com" styleClass="neon-input" GridPane.columnIndex="1" GridPane.rowIndex="0"/>
+                                        <Label styleClass="field-label" text="Port" GridPane.columnIndex="2" GridPane.rowIndex="0"/>
+                                        <TextField fx:id="portField" promptText="22" styleClass="neon-input" GridPane.columnIndex="3" GridPane.rowIndex="0"/>
 
-                                        <Label text="Username" GridPane.columnIndex="0" GridPane.rowIndex="1"/>
-                                        <TextField fx:id="usernameField" promptText="player" GridPane.columnIndex="1" GridPane.rowIndex="1" GridPane.columnSpan="3"/>
+                                        <Label styleClass="field-label" text="Username" GridPane.columnIndex="0" GridPane.rowIndex="1"/>
+                                        <TextField fx:id="usernameField" promptText="player" styleClass="neon-input" GridPane.columnIndex="1" GridPane.rowIndex="1" GridPane.columnSpan="3"/>
 
-                                        <Label text="Auth Type" GridPane.columnIndex="0" GridPane.rowIndex="2"/>
-                                        <ComboBox fx:id="authTypeCombo" GridPane.columnIndex="1" GridPane.rowIndex="2"/>
-                                        <Label fx:id="passwordLabel" text="Password" GridPane.columnIndex="2" GridPane.rowIndex="2"/>
-                                        <PasswordField fx:id="passwordField" promptText="SSH password" GridPane.columnIndex="3" GridPane.rowIndex="2"/>
-                                        <Label fx:id="publicKeyFileLabel" text="Public Key File" GridPane.columnIndex="2" GridPane.rowIndex="2"/>
-                                        <HBox fx:id="publicKeyContainer" spacing="6.0" GridPane.columnIndex="3" GridPane.rowIndex="2">
+                                        <Label styleClass="field-label" text="Auth Type" GridPane.columnIndex="0" GridPane.rowIndex="2"/>
+                                        <ComboBox fx:id="authTypeCombo" styleClass="neon-select" GridPane.columnIndex="1" GridPane.rowIndex="2"/>
+                                        <Label fx:id="passwordLabel" styleClass="field-label" text="Password" GridPane.columnIndex="2" GridPane.rowIndex="2"/>
+                                        <PasswordField fx:id="passwordField" promptText="SSH password" styleClass="neon-input" GridPane.columnIndex="3" GridPane.rowIndex="2"/>
+                                        <Label fx:id="publicKeyFileLabel" styleClass="field-label" text="Public Key File" GridPane.columnIndex="2" GridPane.rowIndex="2"/>
+                                        <HBox fx:id="publicKeyContainer" spacing="6.0" styleClass="public-key-container" GridPane.columnIndex="3" GridPane.rowIndex="2">
                                             <children>
-                                                <ComboBox fx:id="publicKeyFileCombo" HBox.hgrow="ALWAYS"/>
-                                                <Button fx:id="refreshKeysButton" mnemonicParsing="false" onAction="#onRefreshKeys" text="Keys ↻"/>
+                                                <ComboBox fx:id="publicKeyFileCombo" styleClass="neon-select" HBox.hgrow="ALWAYS"/>
+                                                <Button fx:id="refreshKeysButton" mnemonicParsing="false" onAction="#onRefreshKeys" styleClass="action-button subtle-action-button" text="Keys ↻"/>
                                             </children>
                                         </HBox>
 
-                                        <Label text="Remote Path" GridPane.columnIndex="0" GridPane.rowIndex="3"/>
-                                        <TextField fx:id="remotePathField" promptText="/games/worlds" GridPane.columnIndex="1" GridPane.rowIndex="3" GridPane.columnSpan="3"/>
+                                        <Label styleClass="field-label" text="Remote Path" GridPane.columnIndex="0" GridPane.rowIndex="3"/>
+                                        <TextField fx:id="remotePathField" promptText="/games/worlds" styleClass="neon-input" GridPane.columnIndex="1" GridPane.rowIndex="3" GridPane.columnSpan="3"/>
 
-                                        <HBox spacing="8.0" alignment="CENTER_LEFT" maxWidth="1.7976931348623157E308" GridPane.columnIndex="0" GridPane.rowIndex="4" GridPane.columnSpan="4">
+                                        <HBox alignment="CENTER_LEFT" maxWidth="1.7976931348623157E308" spacing="8.0" styleClass="status-row" GridPane.columnIndex="0" GridPane.rowIndex="4" GridPane.columnSpan="4">
                                             <children>
-                                                <ProgressIndicator fx:id="connectLoadingIndicator" visible="false" managed="false" prefWidth="16.0" prefHeight="16.0" maxWidth="16.0" maxHeight="16.0"/>
-                                                <Label fx:id="connectStatusLabel" textFill="#c0392b"/>
+                                                <ProgressIndicator fx:id="connectLoadingIndicator" managed="false" maxHeight="16.0" maxWidth="16.0" prefHeight="16.0" prefWidth="16.0" styleClass="mini-progress" visible="false"/>
+                                                <Label fx:id="connectStatusLabel" styleClass="status-label"/>
                                                 <Region HBox.hgrow="ALWAYS"/>
-                                                <Button fx:id="connectButton" mnemonicParsing="false" onAction="#onConnect" text="Connect"/>
+                                                <Button fx:id="connectButton" mnemonicParsing="false" onAction="#onConnect" styleClass="action-button" text="Connect"/>
                                             </children>
                                         </HBox>
                                     </children>
@@ -98,27 +104,27 @@
                         </VBox>
                     </children>
                 </HBox>
-                <Separator/>
+                <Separator styleClass="neon-separator"/>
             </children>
         </VBox>
     </top>
 
     <center>
-        <HBox spacing="12.0">
+        <HBox spacing="12.0" styleClass="worlds-section">
             <padding>
                 <Insets top="12.0" right="16.0" bottom="12.0" left="16.0"/>
             </padding>
             <children>
-                <VBox spacing="8.0" HBox.hgrow="ALWAYS">
+                <VBox spacing="8.0" styleClass="worlds-panel" HBox.hgrow="ALWAYS">
                     <children>
-                        <Label text="Local Worlds"/>
-                        <ListView fx:id="localWorldsList" VBox.vgrow="ALWAYS"/>
+                        <Label styleClass="panel-title" text="Local Worlds"/>
+                        <ListView fx:id="localWorldsList" styleClass="worlds-list" VBox.vgrow="ALWAYS"/>
                     </children>
                 </VBox>
-                <VBox spacing="8.0" HBox.hgrow="ALWAYS">
+                <VBox spacing="8.0" styleClass="worlds-panel" HBox.hgrow="ALWAYS">
                     <children>
-                        <Label text="Remote Worlds"/>
-                        <ListView fx:id="remoteWorldsList" VBox.vgrow="ALWAYS"/>
+                        <Label styleClass="panel-title" text="Remote Worlds"/>
+                        <ListView fx:id="remoteWorldsList" styleClass="worlds-list" VBox.vgrow="ALWAYS"/>
                     </children>
                 </VBox>
             </children>
@@ -126,17 +132,17 @@
     </center>
 
     <bottom>
-        <HBox alignment="CENTER_LEFT" spacing="8.0" maxWidth="1.7976931348623157E308">
+        <HBox alignment="CENTER_LEFT" maxWidth="1.7976931348623157E308" spacing="8.0" styleClass="bottom-bar">
             <padding>
                 <Insets top="8.0" right="16.0" bottom="16.0" left="16.0"/>
             </padding>
             <children>
-                <ProgressIndicator fx:id="transferProgressIndicator" visible="false" managed="false" prefWidth="16.0" prefHeight="16.0" maxWidth="16.0" maxHeight="16.0"/>
-                <Label fx:id="transferStatusLabel"/>
+                <ProgressIndicator fx:id="transferProgressIndicator" managed="false" maxHeight="16.0" maxWidth="16.0" prefHeight="16.0" prefWidth="16.0" styleClass="mini-progress" visible="false"/>
+                <Label fx:id="transferStatusLabel" styleClass="status-label"/>
                 <Region HBox.hgrow="ALWAYS"/>
-                <Button fx:id="uploadButton" mnemonicParsing="false" onAction="#onUpload" text="Upload →"/>
-                <Button fx:id="downloadButton" mnemonicParsing="false" onAction="#onDownload" text="← Download"/>
-                <Button fx:id="refreshButton" mnemonicParsing="false" onAction="#onRefresh" text="Refresh"/>
+                <Button fx:id="uploadButton" mnemonicParsing="false" onAction="#onUpload" styleClass="action-button" text="Upload →"/>
+                <Button fx:id="downloadButton" mnemonicParsing="false" onAction="#onDownload" styleClass="action-button" text="← Download"/>
+                <Button fx:id="refreshButton" mnemonicParsing="false" onAction="#onRefresh" styleClass="folder-button" text="⟲"/>
             </children>
         </HBox>
     </bottom>

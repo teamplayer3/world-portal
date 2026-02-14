@@ -13,6 +13,8 @@ import io.worldportal.app.service.impl.WorldComparisonService;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
+import javafx.fxml.FXMLLoader;
+import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.application.Platform;
 import javafx.scene.control.ContentDisplay;
@@ -32,9 +34,11 @@ import javafx.scene.image.ImageView;
 import javafx.scene.Scene;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
+import javafx.stage.StageStyle;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Rectangle;
 
@@ -53,6 +57,7 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import java.util.Map;
 
 public class MainController {
 
@@ -493,47 +498,59 @@ public class MainController {
     private void openWorldDetailsWindow(WorldEntry world) {
         Stage stage = new Stage();
         stage.initModality(Modality.NONE);
+        stage.initStyle(StageStyle.UNDECORATED);
         stage.setTitle("World Details - " + displayName(world));
+        FXMLLoader loader = new FXMLLoader(
+                MainController.class.getResource("/io/worldportal/app/world-details-view.fxml")
+        );
+        VBox root;
+        try {
+            root = loader.load();
+        } catch (IOException exception) {
+            return;
+        }
+        Map<String, Object> namespace = loader.getNamespace();
+        HBox appBar = requiredNode(namespace, "detailsWindowDragBar", HBox.class);
+        Button minimizeButton = requiredNode(namespace, "detailsWindowMinimizeButton", Button.class);
+        Button closeButton = requiredNode(namespace, "detailsWindowCloseButton", Button.class);
+        Label nameLabel = requiredNode(namespace, "detailsNameLabel", Label.class);
+        Label folderLabel = requiredNode(namespace, "detailsFolderLabel", Label.class);
+        Label gameModeLabel = requiredNode(namespace, "detailsGameModeLabel", Label.class);
+        Label patchLabel = requiredNode(namespace, "detailsPatchLabel", Label.class);
+        Label lastPlayedLabel = requiredNode(namespace, "detailsLastPlayedLabel", Label.class);
+        Label whitelistTitle = requiredNode(namespace, "detailsWhitelistTitle", Label.class);
+        CheckBox enabledCheckBox = requiredNode(namespace, "detailsWhitelistEnabledCheckBox", CheckBox.class);
+        ListView<String> playerUuids = requiredStringListView(namespace, "detailsWhitelistList");
+        TextField uuidInput = requiredNode(namespace, "detailsUuidInput", TextField.class);
+        Button addPlayerButton = requiredNode(namespace, "detailsAddUuidButton", Button.class);
+        Button removePlayerButton = requiredNode(namespace, "detailsRemoveUuidButton", Button.class);
+        Button saveWhitelistButton = requiredNode(namespace, "detailsSaveWhitelistButton", Button.class);
+        Label whitelistStatus = requiredNode(namespace, "detailsWhitelistStatusLabel", Label.class);
 
-        Label nameLabel = new Label("Name: " + displayName(world));
-        Label folderLabel = new Label("Folder: " + valueOrUnknown(world.getId()));
-        Label gameModeLabel = new Label("GameMode: " + valueOrUnknown(world.getGameMode()));
-        Label patchLabel = new Label("Patch: " + valueOrUnknown(world.getPatchLine()));
-        Label lastPlayedLabel = new Label("Last played: " + formatLastPlayed(world.getLastModified()));
+        nameLabel.setText("Name: " + displayName(world));
+        folderLabel.setText("Folder: " + valueOrUnknown(world.getId()));
+        gameModeLabel.setText("GameMode: " + valueOrUnknown(world.getGameMode()));
+        patchLabel.setText("Patch: " + valueOrUnknown(world.getPatchLine()));
+        lastPlayedLabel.setText("Last played: " + formatLastPlayed(world.getLastModified()));
 
-        Label whitelistTitle = new Label("Whitelist");
-        CheckBox enabledCheckBox = new CheckBox("Whitelist enabled");
-        ListView<String> playerUuids = new ListView<>();
-        playerUuids.setPrefHeight(180);
-        TextField uuidInput = new TextField();
-        uuidInput.setPromptText("Player UUID");
-        Button addPlayerButton = new Button("Add UUID");
-        Button removePlayerButton = new Button("Remove Selected");
-        Button saveWhitelistButton = new Button("Save Whitelist");
-        Label whitelistStatus = new Label();
-
-        HBox addRow = new HBox(8, uuidInput, addPlayerButton);
-        addRow.setAlignment(Pos.CENTER_LEFT);
-        HBox.setHgrow(uuidInput, Priority.ALWAYS);
-
-        HBox removeRow = new HBox(8, removePlayerButton, saveWhitelistButton);
-        removeRow.setAlignment(Pos.CENTER_LEFT);
-
-        VBox root = new VBox(
-                8,
-                nameLabel,
-                folderLabel,
-                gameModeLabel,
-                patchLabel,
-                lastPlayedLabel,
+        Scene detailsScene = new Scene(root, 520, 520);
+        applyWorldDetailsTheme(
+                detailsScene,
+                root,
+                List.of(nameLabel, folderLabel, gameModeLabel, patchLabel, lastPlayedLabel),
                 whitelistTitle,
+                appBar,
+                minimizeButton,
+                closeButton,
                 enabledCheckBox,
                 playerUuids,
-                addRow,
-                removeRow,
-                whitelistStatus);
-        root.setFillWidth(true);
-        root.setStyle("-fx-padding: 12;");
+                uuidInput,
+                addPlayerButton,
+                removePlayerButton,
+                saveWhitelistButton,
+                whitelistStatus
+        );
+        configureDetailsWindowFrame(stage, appBar, minimizeButton, closeButton);
 
         Path localPath = world.getPath() == null ? null : Paths.get(world.getPath());
         boolean editable = localPath != null && Files.isDirectory(localPath);
@@ -582,8 +599,87 @@ public class MainController {
             });
         }
 
-        stage.setScene(new Scene(root, 520, 520));
+        stage.setScene(detailsScene);
         stage.show();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> T requiredNode(Map<String, Object> namespace, String id, Class<T> expectedType) {
+        Object value = namespace.get(id);
+        if (value == null) {
+            throw new IllegalStateException("Missing node: " + id);
+        }
+        if (!expectedType.isInstance(value)) {
+            throw new IllegalStateException("Unexpected node type for '" + id + "'");
+        }
+        return (T) value;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static ListView<String> requiredStringListView(Map<String, Object> namespace, String id) {
+        return (ListView<String>) requiredNode(namespace, id, ListView.class);
+    }
+
+    static void applyWorldDetailsTheme(
+            Scene scene,
+            VBox root,
+            List<Label> detailLabels,
+            Label whitelistTitle,
+            HBox appBar,
+            Button minimizeButton,
+            Button closeButton,
+            CheckBox enabledCheckBox,
+            ListView<String> playerUuids,
+            TextField uuidInput,
+            Button addPlayerButton,
+            Button removePlayerButton,
+            Button saveWhitelistButton,
+            Label whitelistStatus) {
+        String stylesheet = MainController.class.getResource("/io/worldportal/app/main-view.css").toExternalForm();
+        if (!scene.getStylesheets().contains(stylesheet)) {
+            scene.getStylesheets().add(stylesheet);
+        }
+
+        root.getStyleClass().add("app-root");
+        root.getStyleClass().add("details-root");
+        appBar.getStyleClass().add("window-drag-bar");
+        minimizeButton.getStyleClass().add("window-button");
+        closeButton.getStyleClass().add("window-close-square-button");
+
+        if (!detailLabels.isEmpty()) {
+            detailLabels.get(0).getStyleClass().add("panel-title");
+        }
+        for (int i = 1; i < detailLabels.size(); i++) {
+            detailLabels.get(i).getStyleClass().add("field-label");
+        }
+
+        whitelistTitle.getStyleClass().add("panel-title");
+        enabledCheckBox.getStyleClass().add("details-checkbox");
+        playerUuids.getStyleClass().add("worlds-list");
+        uuidInput.getStyleClass().add("neon-input");
+        addPlayerButton.getStyleClass().add("action-button");
+        removePlayerButton.getStyleClass().add("action-button");
+        saveWhitelistButton.getStyleClass().add("action-button");
+        whitelistStatus.getStyleClass().add("status-label");
+    }
+
+    private static void configureDetailsWindowFrame(
+            Stage stage,
+            HBox appBar,
+            Button minimizeButton,
+            Button closeButton) {
+        minimizeButton.setOnAction(event -> stage.setIconified(true));
+        closeButton.setOnAction(event -> stage.close());
+
+        final double[] dragOffset = new double[2];
+        appBar.setOnMousePressed(event -> {
+            dragOffset[0] = stage.getX() - event.getScreenX();
+            dragOffset[1] = stage.getY() - event.getScreenY();
+        });
+        appBar.setOnMouseDragged(event -> {
+            stage.setX(event.getScreenX() + dragOffset[0]);
+            stage.setY(event.getScreenY() + dragOffset[1]);
+        });
     }
 
     private void loadWhitelistIntoDialog(
@@ -753,11 +849,20 @@ public class MainController {
             previewImageView.setFitWidth(96);
             previewImageView.setFitHeight(54);
             previewImageView.setPreserveRatio(true);
+            previewImageView.getStyleClass().add("world-preview");
+            nameLabel.getStyleClass().add("world-name");
+            metaLabel.getStyleClass().add("world-meta");
+            lastPlayedLabel.getStyleClass().add("world-last-played");
+            sameAsLabel.getStyleClass().add("world-same-as");
+            textContainer.getStyleClass().add("world-text-container");
+            content.getStyleClass().add("world-cell-content");
             content.setAlignment(Pos.CENTER_LEFT);
             HBox.setHgrow(textContainer, Priority.ALWAYS);
+            getStyleClass().add("world-cell");
             openDirectoryButton.setText(null);
             openDirectoryButton.setGraphic(createFolderIcon());
             openDirectoryButton.setFocusTraversable(false);
+            openDirectoryButton.getStyleClass().add("folder-button");
             openDirectoryButton.setDisable(!openDirectoryEnabled);
             openDirectoryButton.setOnAction(event -> {
                 if (!openDirectoryEnabled) {
