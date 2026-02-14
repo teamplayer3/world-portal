@@ -34,10 +34,6 @@ jobs:
         if: runner.os == 'Windows'
         run: .\gradlew.bat clean test packageAppImage -PjpackageType=msi
 
-      - name: Build portable app-image (Windows)
-        if: runner.os == 'Windows'
-        run: .\gradlew.bat packageAppImage -PjpackageType=app-image
-
       - name: Archive package (Unix)
         if: runner.os != 'Windows'
         run: |
