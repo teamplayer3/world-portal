@@ -130,8 +130,8 @@ class FxmlLayoutTest {
                 StandardCharsets.UTF_8
         );
 
-        assertTrue(fxml.contains("<VBox spacing=\"6.0\" styleClass=\"top-section\">"));
-        assertTrue(fxml.contains("<Insets top=\"0.0\" right=\"8.0\" bottom=\"2.0\" left=\"8.0\"/>"));
+        assertTrue(fxml.contains("<VBox spacing=\"6.0\">"));
+        assertTrue(fxml.contains("<Insets top=\"4.0\" right=\"8.0\" bottom=\"2.0\" left=\"8.0\"/>"));
         assertTrue(fxml.contains("<Insets top=\"0.0\" right=\"16.0\" bottom=\"4.0\" left=\"16.0\"/>"));
         assertTrue(css.contains(".window-drag-bar {\n    -fx-background-color: transparent;"));
     }
@@ -203,7 +203,7 @@ class FxmlLayoutTest {
                 StandardCharsets.UTF_8
         );
 
-        assertTrue(detailsFxml.contains("fx:id=\"detailsWindowDragBar\" alignment=\"CENTER_RIGHT\" spacing=\"8.0\" styleClass=\"window-drag-bar\""));
+        assertTrue(detailsFxml.contains("fx:id=\"detailsWindowDragBar\" alignment=\"CENTER_RIGHT\" spacing=\"6.0\" styleClass=\"window-drag-bar\""));
         assertTrue(detailsFxml.contains("fx:id=\"detailsWindowMinimizeButton\" mnemonicParsing=\"false\" styleClass=\"window-button\""));
         assertTrue(detailsFxml.contains("fx:id=\"detailsWindowCloseButton\" mnemonicParsing=\"false\" styleClass=\"window-close-square-button\""));
         assertTrue(detailsFxml.contains("fx:id=\"detailsNameLabel\" styleClass=\"panel-title\""));
@@ -243,7 +243,7 @@ class FxmlLayoutTest {
                 StandardCharsets.UTF_8
         );
 
-        assertTrue(detailsFxml.contains("<VBox fillWidth=\"true\" spacing=\"8.0\">"));
+        assertTrue(detailsFxml.contains("<VBox fillWidth=\"true\" spacing=\"6.0\">"));
         assertTrue(detailsFxml.contains("<Insets top=\"12.0\" right=\"16.0\" bottom=\"12.0\" left=\"16.0\"/>"));
         assertTrue(!css.contains(".details-root {\n    -fx-spacing:"));
     }
