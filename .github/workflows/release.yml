@@ -8,6 +8,7 @@ on:
 
 jobs:
   package:
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -23,16 +24,26 @@ jobs:
         with:
           distribution: temurin
           java-version: "23"
+          cache: gradle
+
+      - name: Ensure Xvfb is available (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          if ! command -v xvfb-run >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y xvfb
+          fi
 
       - name: Build and package (Unix)
         if: runner.os != 'Windows'
         run: |
           chmod +x gradlew
-          ./gradlew clean test packageAppImage -PjpackageType=app-image
+          xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
+            ./gradlew --no-daemon --stacktrace cleanTest test packageAppImage -PjpackageType=app-image
 
       - name: Build and package (Windows)
         if: runner.os == 'Windows'
-        run: .\gradlew.bat clean test packageAppImage -PjpackageType=msi
+        run: .\gradlew.bat --no-daemon --stacktrace cleanTest test packageAppImage -PjpackageType=msi
 
       - name: Archive package (Unix)
         if: runner.os != 'Windows'
