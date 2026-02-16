@@ -87,7 +87,7 @@ class FxmlLayoutTest {
                 FxmlLayoutTest.class.getResourceAsStream("/io/worldportal/app/main-view.css").readAllBytes(),
                 StandardCharsets.UTF_8
         );
-        String windowsCss = css.replace("\n", "\r\n");
+        String windowsCss = css.replace("\r\n", "\n").replace("\n", "\r\n");
 
         assertTrue(normalizeLineEndings(windowsCss).contains(".app-title {\n    -fx-text-fill: #7de7f5;\n    -fx-font-size: 20px;"));
     }
@@ -288,6 +288,6 @@ class FxmlLayoutTest {
     }
 
     private static String normalizeLineEndings(String value) {
-        return value.replace("\r\n", "\n");
+        return value.replace("\r\n", "\n").replace("\r", "\n");
     }
 }
