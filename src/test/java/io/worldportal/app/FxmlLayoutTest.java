@@ -69,16 +69,27 @@ class FxmlLayoutTest {
 
     @Test
     void stylesheetUsesCompactControlSizing() throws IOException {
-        String css = new String(
+        String css = normalizeLineEndings(new String(
                 FxmlLayoutTest.class.getResourceAsStream("/io/worldportal/app/main-view.css").readAllBytes(),
                 StandardCharsets.UTF_8
-        );
+        ));
 
         assertTrue(css.contains(".app-title {\n    -fx-text-fill: #7de7f5;\n    -fx-font-size: 20px;"));
         assertTrue(css.contains(".panel-title {\n    -fx-text-fill: #8bdeee;\n    -fx-font-size: 14px;"));
         assertTrue(css.contains(".field-label {\n    -fx-text-fill: #85d4e8;\n    -fx-font-size: 13px;"));
         assertTrue(css.contains("-fx-font-size: 13px;"));
         assertTrue(css.contains(".action-button {\n    -fx-border-width: 1;\n    -fx-font-size: 13px;"));
+    }
+
+    @Test
+    void multilineStyleAssertionsNeedLineEndingNormalizationForWindows() throws IOException {
+        String css = new String(
+                FxmlLayoutTest.class.getResourceAsStream("/io/worldportal/app/main-view.css").readAllBytes(),
+                StandardCharsets.UTF_8
+        );
+        String windowsCss = css.replace("\n", "\r\n");
+
+        assertTrue(normalizeLineEndings(windowsCss).contains(".app-title {\n    -fx-text-fill: #7de7f5;\n    -fx-font-size: 20px;"));
     }
 
     @Test
@@ -106,10 +117,10 @@ class FxmlLayoutTest {
 
     @Test
     void closeAndRefreshStylesUseBlueAndTransparentThemes() throws IOException {
-        String css = new String(
+        String css = normalizeLineEndings(new String(
                 FxmlLayoutTest.class.getResourceAsStream("/io/worldportal/app/main-view.css").readAllBytes(),
                 StandardCharsets.UTF_8
-        );
+        ));
 
         assertTrue(css.contains(".window-close-square-button {\n    -fx-background-color: linear-gradient(to bottom, #8ecbff, #6faee8);"));
         assertTrue(css.contains("-fx-border-color: #73a8d9;"));
@@ -125,10 +136,10 @@ class FxmlLayoutTest {
                 FxmlLayoutTest.class.getResourceAsStream("/io/worldportal/app/main-view.fxml").readAllBytes(),
                 StandardCharsets.UTF_8
         );
-        String css = new String(
+        String css = normalizeLineEndings(new String(
                 FxmlLayoutTest.class.getResourceAsStream("/io/worldportal/app/main-view.css").readAllBytes(),
                 StandardCharsets.UTF_8
-        );
+        ));
 
         assertTrue(fxml.contains("<VBox spacing=\"6.0\">"));
         assertTrue(fxml.contains("<Insets top=\"4.0\" right=\"8.0\" bottom=\"2.0\" left=\"8.0\"/>"));
@@ -238,10 +249,10 @@ class FxmlLayoutTest {
                 FxmlLayoutTest.class.getResourceAsStream("/io/worldportal/app/world-details-view.fxml").readAllBytes(),
                 StandardCharsets.UTF_8
         );
-        String css = new String(
+        String css = normalizeLineEndings(new String(
                 FxmlLayoutTest.class.getResourceAsStream("/io/worldportal/app/main-view.css").readAllBytes(),
                 StandardCharsets.UTF_8
-        );
+        ));
 
         assertTrue(detailsFxml.contains("<VBox fillWidth=\"true\" spacing=\"6.0\">"));
         assertTrue(detailsFxml.contains("<Insets top=\"12.0\" right=\"16.0\" bottom=\"12.0\" left=\"16.0\"/>"));
@@ -250,10 +261,10 @@ class FxmlLayoutTest {
 
     @Test
     void appRootUsesSmallCornerRadiusForWindowEdges() throws IOException {
-        String css = new String(
+        String css = normalizeLineEndings(new String(
                 FxmlLayoutTest.class.getResourceAsStream("/io/worldportal/app/main-view.css").readAllBytes(),
                 StandardCharsets.UTF_8
-        );
+        ));
 
         assertTrue(css.contains(".app-root {\n    -fx-font-family: \"Segoe UI\", \"Noto Sans\", sans-serif;"));
         assertTrue(css.contains("-fx-background-radius: 8;"));
@@ -274,5 +285,9 @@ class FxmlLayoutTest {
         assertTrue(deleteConfirmationFxml.contains("fx:id=\"confirmDeleteWorldButton\""));
         assertTrue(deleteConfirmationFxml.contains("fx:id=\"cancelDeleteWorldButton\""));
         assertTrue(deleteConfirmationFxml.contains("styleClass=\"danger-action-button\""));
+    }
+
+    private static String normalizeLineEndings(String value) {
+        return value.replace("\r\n", "\n");
     }
 }
