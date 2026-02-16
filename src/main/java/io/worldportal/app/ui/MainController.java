@@ -14,7 +14,6 @@ import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
-import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.application.Platform;
 import javafx.scene.control.ContentDisplay;
@@ -24,6 +23,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
 import javafx.scene.control.TextField;
+import javafx.scene.control.Tooltip;
 import javafx.scene.control.Button;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.ProgressIndicator;
@@ -31,6 +31,7 @@ import javafx.scene.input.MouseButton;
 import javafx.scene.Group;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
+import javafx.util.Duration;
 import javafx.scene.Scene;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.HBox;
@@ -55,6 +56,8 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.Map;
@@ -174,7 +177,12 @@ public class MainController {
     @FXML
     private void initialize() {
         localWorldsList.setItems(localWorlds);
-        localWorldsList.setCellFactory(listView -> new WorldCell(true));
+        localWorldsList.setCellFactory(listView -> new WorldCell(
+                true,
+                ">>",
+                "Upload",
+                this::onUploadWorld,
+                this::canTransferFromListCell));
         localWorldsList.getSelectionModel().selectedItemProperty()
                 .addListener((obs, oldValue, newValue) -> syncTransferButtons());
         localWorldsList.setOnMouseClicked(event -> {
@@ -186,7 +194,12 @@ public class MainController {
             }
         });
         remoteWorldsList.setItems(remoteWorlds);
-        remoteWorldsList.setCellFactory(listView -> new WorldCell(false));
+        remoteWorldsList.setCellFactory(listView -> new WorldCell(
+                false,
+                "<<",
+                "Download",
+                this::onDownloadWorld,
+                this::canTransferFromListCell));
         remoteWorldsList.getSelectionModel().selectedItemProperty()
                 .addListener((obs, oldValue, newValue) -> syncTransferButtons());
         remoteWorldsList.setOnMouseClicked(event -> {
@@ -244,6 +257,16 @@ public class MainController {
     @FXML
     private void onUpload() {
         WorldEntry selectedWorld = localWorldsList.getSelectionModel().getSelectedItem();
+        onUploadWorld(selectedWorld);
+    }
+
+    @FXML
+    private void onDownload() {
+        WorldEntry selectedWorld = remoteWorldsList.getSelectionModel().getSelectedItem();
+        onDownloadWorld(selectedWorld);
+    }
+
+    private void onUploadWorld(WorldEntry selectedWorld) {
         if (selectedWorld == null) {
             return;
         }
@@ -256,9 +279,7 @@ public class MainController {
                 });
     }
 
-    @FXML
-    private void onDownload() {
-        WorldEntry selectedWorld = remoteWorldsList.getSelectionModel().getSelectedItem();
+    private void onDownloadWorld(WorldEntry selectedWorld) {
         if (selectedWorld == null) {
             return;
         }
@@ -456,8 +477,10 @@ public class MainController {
 
     private void syncTransferButtons() {
         boolean connected = isRemoteConnected();
-        boolean localSelected = localWorldsList != null && localWorldsList.getSelectionModel().getSelectedItem() != null;
-        boolean remoteSelected = remoteWorldsList != null && remoteWorldsList.getSelectionModel().getSelectedItem() != null;
+        boolean localSelected = localWorldsList != null
+                && localWorldsList.getSelectionModel().getSelectedItem() != null;
+        boolean remoteSelected = remoteWorldsList != null
+                && remoteWorldsList.getSelectionModel().getSelectedItem() != null;
         if (uploadButton != null) {
             uploadButton.setDisable(transferBusy || !connected || !localSelected);
         }
@@ -467,10 +490,20 @@ public class MainController {
         if (refreshButton != null) {
             refreshButton.setDisable(transferBusy);
         }
+        if (localWorldsList != null) {
+            localWorldsList.refresh();
+        }
+        if (remoteWorldsList != null) {
+            remoteWorldsList.refresh();
+        }
     }
 
     protected boolean isRemoteConnected() {
         return sshConnectionService.isConnected();
+    }
+
+    private boolean canTransferFromListCell() {
+        return isRemoteConnected() && !transferBusy;
     }
 
     private void runTransferAsync(String runningText, String successText, Runnable transferWork) {
@@ -498,12 +531,11 @@ public class MainController {
     private void openWorldDetailsWindow(WorldEntry world) {
         Stage stage = new Stage();
         stage.initModality(Modality.NONE);
-        stage.initStyle(StageStyle.UNDECORATED);
+        stage.initStyle(StageStyle.TRANSPARENT);
         stage.setTitle("World Details - " + displayName(world));
         FXMLLoader loader = new FXMLLoader(
-                MainController.class.getResource("/io/worldportal/app/world-details-view.fxml")
-        );
-        VBox root;
+                MainController.class.getResource("/io/worldportal/app/world-details-view.fxml"));
+        Region root;
         try {
             root = loader.load();
         } catch (IOException exception) {
@@ -525,6 +557,7 @@ public class MainController {
         Button addPlayerButton = requiredNode(namespace, "detailsAddUuidButton", Button.class);
         Button removePlayerButton = requiredNode(namespace, "detailsRemoveUuidButton", Button.class);
         Button saveWhitelistButton = requiredNode(namespace, "detailsSaveWhitelistButton", Button.class);
+        Button deleteWorldButton = requiredNode(namespace, "detailsDeleteWorldButton", Button.class);
         Label whitelistStatus = requiredNode(namespace, "detailsWhitelistStatusLabel", Label.class);
 
         nameLabel.setText("Name: " + displayName(world));
@@ -534,22 +567,7 @@ public class MainController {
         lastPlayedLabel.setText("Last played: " + formatLastPlayed(world.getLastModified()));
 
         Scene detailsScene = new Scene(root, 520, 520);
-        applyWorldDetailsTheme(
-                detailsScene,
-                root,
-                List.of(nameLabel, folderLabel, gameModeLabel, patchLabel, lastPlayedLabel),
-                whitelistTitle,
-                appBar,
-                minimizeButton,
-                closeButton,
-                enabledCheckBox,
-                playerUuids,
-                uuidInput,
-                addPlayerButton,
-                removePlayerButton,
-                saveWhitelistButton,
-                whitelistStatus
-        );
+        applyWorldDetailsTheme(detailsScene);
         configureDetailsWindowFrame(stage, appBar, minimizeButton, closeButton);
 
         Path localPath = world.getPath() == null ? null : Paths.get(world.getPath());
@@ -562,6 +580,7 @@ public class MainController {
             addPlayerButton.setDisable(true);
             removePlayerButton.setDisable(true);
             saveWhitelistButton.setDisable(true);
+            deleteWorldButton.setDisable(true);
             whitelistStatus.setText("Whitelist editing is only available for local world folders.");
         } else {
             loadWhitelistIntoDialog(localPath, enabledCheckBox, playerUuids, whitelistStatus);
@@ -597,10 +616,93 @@ public class MainController {
                     whitelistStatus.setText("Failed to save whitelist: " + exception.getMessage());
                 }
             });
+
+            deleteWorldButton.setOnAction(event ->
+                    openDeleteWorldConfirmationWindow(stage, world, localPath));
         }
 
         stage.setScene(detailsScene);
         stage.show();
+    }
+
+    private void openDeleteWorldConfirmationWindow(Stage owner, WorldEntry world, Path worldPath) {
+        Stage confirmStage = new Stage();
+        confirmStage.initOwner(owner);
+        confirmStage.initModality(Modality.WINDOW_MODAL);
+        confirmStage.initStyle(StageStyle.TRANSPARENT);
+        confirmStage.setTitle("Delete World - " + displayName(world));
+
+        FXMLLoader loader = new FXMLLoader(
+                MainController.class.getResource("/io/worldportal/app/world-delete-confirmation-view.fxml"));
+        Region root;
+        try {
+            root = loader.load();
+        } catch (IOException exception) {
+            return;
+        }
+
+        Map<String, Object> namespace = loader.getNamespace();
+        Label promptLabel = requiredNode(namespace, "deleteWorldPromptLabel", Label.class);
+        TextField worldNameInput = requiredNode(namespace, "deleteWorldNameInput", TextField.class);
+        Label statusLabel = requiredNode(namespace, "deleteWorldStatusLabel", Label.class);
+        Button confirmButton = requiredNode(namespace, "confirmDeleteWorldButton", Button.class);
+        Button cancelButton = requiredNode(namespace, "cancelDeleteWorldButton", Button.class);
+
+        String expectedName = displayName(world);
+        promptLabel.setText("Type \"" + expectedName + "\" to confirm deletion.");
+
+        cancelButton.setOnAction(event -> confirmStage.close());
+        confirmButton.setOnAction(event -> {
+            if (!matchesDeleteConfirmation(expectedName, worldNameInput.getText())) {
+                statusLabel.setText("World name does not match.");
+                return;
+            }
+
+            confirmButton.setDisable(true);
+            cancelButton.setDisable(true);
+            statusLabel.setText("Deleting world...");
+
+            runAsync(() -> {
+                try {
+                    deleteWorldDirectory(worldPath);
+                    Platform.runLater(() -> {
+                        confirmStage.close();
+                        owner.close();
+                        refreshLists();
+                    });
+                } catch (IOException exception) {
+                    Platform.runLater(() -> {
+                        statusLabel.setText("Failed to delete world: " + exception.getMessage());
+                        confirmButton.setDisable(false);
+                        cancelButton.setDisable(false);
+                    });
+                }
+            });
+        });
+
+        Scene confirmationScene = new Scene(root, 420, 220);
+        applyWorldDetailsTheme(confirmationScene);
+        confirmStage.setScene(confirmationScene);
+        confirmStage.show();
+        Platform.runLater(worldNameInput::requestFocus);
+    }
+
+    private static boolean matchesDeleteConfirmation(String expectedWorldName, String enteredWorldName) {
+        if (expectedWorldName == null || enteredWorldName == null) {
+            return false;
+        }
+        return expectedWorldName.equals(enteredWorldName.trim());
+    }
+
+    private static void deleteWorldDirectory(Path worldPath) throws IOException {
+        if (worldPath == null || !Files.exists(worldPath)) {
+            return;
+        }
+        try (Stream<Path> paths = Files.walk(worldPath)) {
+            for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
+                Files.deleteIfExists(path);
+            }
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -620,47 +722,8 @@ public class MainController {
         return (ListView<String>) requiredNode(namespace, id, ListView.class);
     }
 
-    static void applyWorldDetailsTheme(
-            Scene scene,
-            VBox root,
-            List<Label> detailLabels,
-            Label whitelistTitle,
-            HBox appBar,
-            Button minimizeButton,
-            Button closeButton,
-            CheckBox enabledCheckBox,
-            ListView<String> playerUuids,
-            TextField uuidInput,
-            Button addPlayerButton,
-            Button removePlayerButton,
-            Button saveWhitelistButton,
-            Label whitelistStatus) {
-        String stylesheet = MainController.class.getResource("/io/worldportal/app/main-view.css").toExternalForm();
-        if (!scene.getStylesheets().contains(stylesheet)) {
-            scene.getStylesheets().add(stylesheet);
-        }
-
-        root.getStyleClass().add("app-root");
-        root.getStyleClass().add("details-root");
-        appBar.getStyleClass().add("window-drag-bar");
-        minimizeButton.getStyleClass().add("window-button");
-        closeButton.getStyleClass().add("window-close-square-button");
-
-        if (!detailLabels.isEmpty()) {
-            detailLabels.get(0).getStyleClass().add("panel-title");
-        }
-        for (int i = 1; i < detailLabels.size(); i++) {
-            detailLabels.get(i).getStyleClass().add("field-label");
-        }
-
-        whitelistTitle.getStyleClass().add("panel-title");
-        enabledCheckBox.getStyleClass().add("details-checkbox");
-        playerUuids.getStyleClass().add("worlds-list");
-        uuidInput.getStyleClass().add("neon-input");
-        addPlayerButton.getStyleClass().add("action-button");
-        removePlayerButton.getStyleClass().add("action-button");
-        saveWhitelistButton.getStyleClass().add("action-button");
-        whitelistStatus.getStyleClass().add("status-label");
+    static void applyWorldDetailsTheme(Scene scene) {
+        scene.setFill(Color.TRANSPARENT);
     }
 
     private static void configureDetailsWindowFrame(
@@ -840,12 +903,25 @@ public class MainController {
         private final Label lastPlayedLabel = new Label();
         private final Label sameAsLabel = new Label();
         private final VBox textContainer = new VBox(4.0, nameLabel, metaLabel, lastPlayedLabel, sameAsLabel);
+        private final Button transferButton = new Button();
+        private final Tooltip transferTooltip;
         private final Button openDirectoryButton = new Button("Open Dir");
-        private final HBox content = new HBox(10.0, previewImageView, textContainer, openDirectoryButton);
+        private final HBox content = new HBox(10.0, previewImageView, textContainer, transferButton, openDirectoryButton);
         private final boolean openDirectoryEnabled;
+        private final String transferTooltipText;
+        private final Consumer<WorldEntry> transferAction;
+        private final BooleanSupplier transferEnabledSupplier;
 
-        private WorldCell(boolean openDirectoryEnabled) {
+        private WorldCell(
+                boolean openDirectoryEnabled,
+                String transferButtonText,
+                String transferTooltipText,
+                Consumer<WorldEntry> transferAction,
+                BooleanSupplier transferEnabledSupplier) {
             this.openDirectoryEnabled = openDirectoryEnabled;
+            this.transferTooltipText = transferTooltipText;
+            this.transferAction = transferAction;
+            this.transferEnabledSupplier = transferEnabledSupplier;
             previewImageView.setFitWidth(96);
             previewImageView.setFitHeight(54);
             previewImageView.setPreserveRatio(true);
@@ -859,6 +935,19 @@ public class MainController {
             content.setAlignment(Pos.CENTER_LEFT);
             HBox.setHgrow(textContainer, Priority.ALWAYS);
             getStyleClass().add("world-cell");
+            transferButton.setText(transferButtonText);
+            transferButton.setFocusTraversable(false);
+            transferButton.getStyleClass().addAll("action-button", "subtle-action-button", "world-transfer-button");
+            transferTooltip = new Tooltip(transferTooltipText);
+            transferTooltip.setShowDelay(Duration.millis(150));
+            transferButton.setTooltip(transferTooltip);
+            transferButton.setOnAction(event -> {
+                WorldEntry currentItem = getItem();
+                if (currentItem != null && transferEnabledSupplier.getAsBoolean()) {
+                    transferAction.accept(currentItem);
+                }
+                event.consume();
+            });
             openDirectoryButton.setText(null);
             openDirectoryButton.setGraphic(createFolderIcon());
             openDirectoryButton.setFocusTraversable(false);
@@ -887,8 +976,7 @@ public class MainController {
             }
 
             nameLabel.setText(displayNameWithFolder(item));
-            metaLabel.setText("GameMode: " + valueOrUnknown(item.getGameMode()) + "  |  Patch: "
-                    + valueOrUnknown(item.getPatchLine()));
+            metaLabel.setText("GameMode: " + valueOrUnknown(item.getGameMode()));
             lastPlayedLabel.setText("Last played: " + formatLastPlayed(item.getLastModified()));
 
             String sameAsText = sameAsText(item, openDirectoryEnabled ? "remote" : "local");
@@ -907,6 +995,8 @@ public class MainController {
             } else {
                 previewImageView.setImage(null);
             }
+            boolean transferEnabled = transferEnabledSupplier.getAsBoolean();
+            transferButton.setDisable(!transferEnabled);
 
             setGraphic(content);
         }

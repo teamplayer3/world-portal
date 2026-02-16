@@ -1,6 +1,9 @@
 package io.worldportal.app;
 
 import javafx.application.Platform;
+import javafx.scene.Scene;
+import javafx.scene.layout.VBox;
+import javafx.scene.paint.Color;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
 import org.junit.jupiter.api.Assumptions;
@@ -32,7 +35,7 @@ class WindowChromeStyleTest {
     }
 
     @Test
-    void appWindowUsesUndecoratedStageStyle() throws InterruptedException {
+    void appWindowUsesTransparentStageStyle() throws InterruptedException {
         Assumptions.assumeTrue(javaFxAvailable, "JavaFX runtime is not available in this environment");
 
         AtomicReference<StageStyle> stageStyle = new AtomicReference<>();
@@ -43,7 +46,42 @@ class WindowChromeStyleTest {
             stage.hide();
         });
 
-        assertEquals(StageStyle.UNDECORATED, stageStyle.get());
+        assertEquals(StageStyle.TRANSPARENT, stageStyle.get());
+    }
+
+    @Test
+    void windowFrameUsesTransparentSceneFillForRoundedCorners() throws InterruptedException {
+        Assumptions.assumeTrue(javaFxAvailable, "JavaFX runtime is not available in this environment");
+
+        AtomicReference<Color> sceneFill = new AtomicReference<>();
+        runOnFxThreadAndWait(() -> {
+            Stage stage = new Stage();
+            Scene scene = new Scene(new VBox(), 980, 620);
+            WorldPortalApplication.configureWindowFrame(stage, scene);
+            sceneFill.set((Color) scene.getFill());
+            stage.hide();
+        });
+
+        assertEquals(Color.TRANSPARENT, sceneFill.get());
+    }
+
+    @Test
+    void windowFrameSetsMainWindowMinimumSizeTo930By520() throws InterruptedException {
+        Assumptions.assumeTrue(javaFxAvailable, "JavaFX runtime is not available in this environment");
+
+        AtomicReference<Double> minWidth = new AtomicReference<>();
+        AtomicReference<Double> minHeight = new AtomicReference<>();
+        runOnFxThreadAndWait(() -> {
+            Stage stage = new Stage();
+            Scene scene = new Scene(new VBox(), 980, 620);
+            WorldPortalApplication.configureWindowFrame(stage, scene);
+            minWidth.set(stage.getMinWidth());
+            minHeight.set(stage.getMinHeight());
+            stage.hide();
+        });
+
+        assertEquals(930.0, minWidth.get());
+        assertEquals(520.0, minHeight.get());
     }
 
     private static void runOnFxThreadAndWait(Runnable runnable) throws InterruptedException {

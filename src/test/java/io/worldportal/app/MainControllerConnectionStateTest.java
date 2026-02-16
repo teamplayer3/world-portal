@@ -1,8 +1,10 @@
 package io.worldportal.app;
 
 import io.worldportal.app.ui.MainController;
+import io.worldportal.app.model.WorldEntry;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
+import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
@@ -10,16 +12,26 @@ import javafx.scene.control.ListView;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.TextField;
+import javafx.scene.control.Tooltip;
 import javafx.scene.layout.HBox;
+import javafx.util.Duration;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Assumptions;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Instant;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -175,6 +187,65 @@ class MainControllerConnectionStateTest {
         });
     }
 
+    @Test
+    void worldCellExposesDirectionalTransferButtonPerItem() throws Exception {
+        Assumptions.assumeTrue(javaFxAvailable, "JavaFX runtime is not available in this environment");
+        runOnFxThreadAndWait(() -> {
+            assertTrue(worldCellContainsTransferButton(">>"));
+            assertTrue(worldCellContainsTransferButton("<<"));
+        });
+    }
+
+    @Test
+    void worldCellMetadataDoesNotShowPatchInfo() throws Exception {
+        Assumptions.assumeTrue(javaFxAvailable, "JavaFX runtime is not available in this environment");
+        runOnFxThreadAndWait(() -> {
+            String metadataText = worldCellMetaLabelText();
+            assertTrue(metadataText.contains("GameMode: Survival"));
+            assertFalse(metadataText.contains("Patch:"));
+        });
+    }
+
+    @Test
+    void worldCellTransferButtonUsesExpectedTooltipTextAndFastShowDelay() throws Exception {
+        Assumptions.assumeTrue(javaFxAvailable, "JavaFX runtime is not available in this environment");
+        runOnFxThreadAndWait(() -> {
+            Tooltip uploadTooltip = worldCellTransferButtonTooltip(">>", true);
+            Tooltip downloadTooltip = worldCellTransferButtonTooltip("<<", true);
+
+            assertEquals("Upload", uploadTooltip.getText());
+            assertEquals("Download", downloadTooltip.getText());
+            assertTrue(uploadTooltip.getShowDelay().toMillis() <= 250.0);
+            assertTrue(downloadTooltip.getShowDelay().toMillis() <= 250.0);
+        });
+    }
+
+    @Test
+    void deleteConfirmationRequiresExactWorldName() throws Exception {
+        Method method = MainController.class.getDeclaredMethod(
+                "matchesDeleteConfirmation", String.class, String.class);
+        method.setAccessible(true);
+
+        assertTrue((boolean) method.invoke(null, "SkyHold", "SkyHold"));
+        assertTrue((boolean) method.invoke(null, "SkyHold", "  SkyHold  "));
+        assertFalse((boolean) method.invoke(null, "SkyHold", "skyhold"));
+        assertFalse((boolean) method.invoke(null, "SkyHold", "SkyHold1"));
+    }
+
+    @Test
+    void deleteWorldDirectoryRemovesNestedFilesAndFolders() throws Exception {
+        Path worldDir = Files.createTempDirectory("world-delete-test");
+        Path nested = Files.createDirectories(worldDir.resolve("universe/worlds/default"));
+        Files.writeString(nested.resolve("config.json"), "{}");
+        Files.writeString(worldDir.resolve("client_metadata.json"), "{}");
+
+        Method method = MainController.class.getDeclaredMethod("deleteWorldDirectory", Path.class);
+        method.setAccessible(true);
+        method.invoke(null, worldDir);
+
+        assertFalse(Files.exists(worldDir));
+    }
+
     private static void invokeBusyState(MainController controller, boolean busy) {
         try {
             Method method = MainController.class.getDeclaredMethod("setRemoteConnectionBusy", boolean.class);
@@ -190,6 +261,119 @@ class MainControllerConnectionStateTest {
             Method method = MainController.class.getDeclaredMethod("setTransferBusy", boolean.class, String.class);
             method.setAccessible(true);
             method.invoke(controller, busy, "");
+        } catch (ReflectiveOperationException reflectionFailure) {
+            throw new AssertionError(reflectionFailure);
+        }
+    }
+
+    private static boolean worldCellContainsTransferButton(String expectedText) {
+        try {
+            Class<?> worldCellClass = findWorldCellClass();
+            Constructor<?> constructor = worldCellClass.getDeclaredConstructor(
+                    boolean.class,
+                    String.class,
+                    String.class,
+                    Consumer.class,
+                    BooleanSupplier.class);
+            constructor.setAccessible(true);
+
+            Object cell = constructor.newInstance(
+                    true,
+                    expectedText,
+                    "tooltip",
+                    (Consumer<WorldEntry>) world -> {
+                    },
+                    (BooleanSupplier) () -> true);
+
+            Method updateItem = worldCellClass.getDeclaredMethod("updateItem", WorldEntry.class, boolean.class);
+            updateItem.setAccessible(true);
+            updateItem.invoke(cell, new WorldEntry("folder", "Name", "/tmp/world", null, "Survival", "1.0", Instant.now()), false);
+
+            Method getGraphic = cell.getClass().getSuperclass().getMethod("getGraphic");
+            Object graphic = getGraphic.invoke(cell);
+            if (!(graphic instanceof HBox hBox)) {
+                return false;
+            }
+
+            for (Node child : hBox.getChildren()) {
+                if (child instanceof Button button && expectedText.equals(button.getText())) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (ReflectiveOperationException reflectionFailure) {
+            throw new AssertionError(reflectionFailure);
+        }
+    }
+
+    private static Class<?> findWorldCellClass() {
+        for (Class<?> nestedClass : MainController.class.getDeclaredClasses()) {
+            if ("WorldCell".equals(nestedClass.getSimpleName())) {
+                return nestedClass;
+            }
+        }
+        throw new AssertionError("WorldCell nested class not found");
+    }
+
+    private static String worldCellMetaLabelText() {
+        try {
+            Class<?> worldCellClass = findWorldCellClass();
+            Constructor<?> constructor = worldCellClass.getDeclaredConstructor(
+                    boolean.class,
+                    String.class,
+                    String.class,
+                    Consumer.class,
+                    BooleanSupplier.class);
+            constructor.setAccessible(true);
+
+            Object cell = constructor.newInstance(
+                    true,
+                    ">>",
+                    "Upload",
+                    (Consumer<WorldEntry>) world -> {
+                    },
+                    (BooleanSupplier) () -> true);
+
+            Method updateItem = worldCellClass.getDeclaredMethod("updateItem", WorldEntry.class, boolean.class);
+            updateItem.setAccessible(true);
+            updateItem.invoke(cell, new WorldEntry("folder", "Name", "/tmp/world", null, "Survival", "1.0", Instant.now()), false);
+
+            Field metaLabelField = worldCellClass.getDeclaredField("metaLabel");
+            metaLabelField.setAccessible(true);
+            Label metaLabel = (Label) metaLabelField.get(cell);
+            return metaLabel.getText();
+        } catch (ReflectiveOperationException reflectionFailure) {
+            throw new AssertionError(reflectionFailure);
+        }
+    }
+
+    private static Tooltip worldCellTransferButtonTooltip(String transferButtonText, boolean enabled) {
+        try {
+            Class<?> worldCellClass = findWorldCellClass();
+            Constructor<?> constructor = worldCellClass.getDeclaredConstructor(
+                    boolean.class,
+                    String.class,
+                    String.class,
+                    Consumer.class,
+                    BooleanSupplier.class);
+            constructor.setAccessible(true);
+
+            Object cell = constructor.newInstance(
+                    true,
+                    transferButtonText,
+                    ">>".equals(transferButtonText) ? "Upload" : "Download",
+                    (Consumer<WorldEntry>) world -> {
+                    },
+                    (BooleanSupplier) () -> enabled);
+
+            Method updateItem = worldCellClass.getDeclaredMethod("updateItem", WorldEntry.class, boolean.class);
+            updateItem.setAccessible(true);
+            updateItem.invoke(cell, new WorldEntry("folder", "Name", "/tmp/world", null, "Survival", "1.0", Instant.now()), false);
+
+            Field transferButtonField = worldCellClass.getDeclaredField("transferButton");
+            transferButtonField.setAccessible(true);
+            Button transferButton = (Button) transferButtonField.get(cell);
+            return transferButton.getTooltip();
         } catch (ReflectiveOperationException reflectionFailure) {
             throw new AssertionError(reflectionFailure);
         }
@@ -212,13 +396,19 @@ class MainControllerConnectionStateTest {
 
     private static void runOnFxThreadAndWait(Runnable runnable) throws InterruptedException {
         CountDownLatch latch = new CountDownLatch(1);
+        AtomicReference<Throwable> failure = new AtomicReference<>();
         Platform.runLater(() -> {
             try {
                 runnable.run();
+            } catch (Throwable throwable) {
+                failure.set(throwable);
             } finally {
                 latch.countDown();
             }
         });
         assertTrue(latch.await(5, TimeUnit.SECONDS));
+        if (failure.get() != null) {
+            throw new AssertionError(failure.get());
+        }
     }
 }

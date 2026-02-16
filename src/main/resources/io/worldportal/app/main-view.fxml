@@ -18,11 +18,11 @@
 
 <BorderPane prefHeight="620.0" prefWidth="980.0" styleClass="app-root" stylesheets="@main-view.css" xmlns="http://javafx.com/javafx/25" xmlns:fx="http://javafx.com/fxml/1" fx:controller="io.worldportal.app.ui.MainController">
     <top>
-        <VBox spacing="6.0" styleClass="top-section">
+        <VBox spacing="6.0">
             <children>
-                <HBox fx:id="windowDragBar" alignment="CENTER_RIGHT" styleClass="window-drag-bar">
+                <HBox fx:id="windowDragBar" spacing="6.0" alignment="CENTER_RIGHT" styleClass="window-drag-bar">
                     <padding>
-                        <Insets top="0.0" right="8.0" bottom="2.0" left="8.0"/>
+                        <Insets top="4.0" right="8.0" bottom="2.0" left="8.0"/>
                     </padding>
                     <children>
                         <Region HBox.hgrow="ALWAYS"/>
@@ -140,8 +140,6 @@
                 <ProgressIndicator fx:id="transferProgressIndicator" managed="false" maxHeight="16.0" maxWidth="16.0" prefHeight="16.0" prefWidth="16.0" styleClass="mini-progress" visible="false"/>
                 <Label fx:id="transferStatusLabel" styleClass="status-label"/>
                 <Region HBox.hgrow="ALWAYS"/>
-                <Button fx:id="uploadButton" mnemonicParsing="false" onAction="#onUpload" styleClass="action-button" text="Upload →"/>
-                <Button fx:id="downloadButton" mnemonicParsing="false" onAction="#onDownload" styleClass="action-button" text="← Download"/>
                 <Button fx:id="refreshButton" mnemonicParsing="false" onAction="#onRefresh" styleClass="folder-button" text="⟲"/>
             </children>
         </HBox>

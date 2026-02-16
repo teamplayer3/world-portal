@@ -12,12 +12,13 @@ import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
+import javafx.scene.paint.Color;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
 
 public class WorldPortalApplication extends Application {
     private static final double RESIZE_MARGIN = 6.0;
-    private static final double MIN_WINDOW_WIDTH = 760.0;
+    private static final double MIN_WINDOW_WIDTH = 930.0;
     private static final double MIN_WINDOW_HEIGHT = 520.0;
 
     @Override
@@ -48,10 +49,11 @@ public class WorldPortalApplication extends Application {
     }
 
     static void applyWindowStyle(Stage stage) {
-        stage.initStyle(StageStyle.UNDECORATED);
+        stage.initStyle(StageStyle.TRANSPARENT);
     }
 
     static void configureWindowFrame(Stage stage, Scene scene) {
+        scene.setFill(Color.TRANSPARENT);
         stage.setMinWidth(MIN_WINDOW_WIDTH);
         stage.setMinHeight(MIN_WINDOW_HEIGHT);
 

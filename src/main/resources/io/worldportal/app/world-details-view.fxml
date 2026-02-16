@@ -6,51 +6,64 @@
 <?import javafx.scene.control.Label?>
 <?import javafx.scene.control.ListView?>
 <?import javafx.scene.control.TextField?>
+<?import javafx.scene.layout.BorderPane?>
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.Priority?>
 <?import javafx.scene.layout.Region?>
 <?import javafx.scene.layout.VBox?>
+<?import java.lang.String?>
 
-<VBox fx:id="detailsRoot" fillWidth="true" spacing="6.0" styleClass="app-root details-root" xmlns="http://javafx.com/javafx/25" xmlns:fx="http://javafx.com/fxml/1">
-    <children>
-        <HBox fx:id="detailsWindowDragBar" alignment="CENTER_RIGHT" spacing="8.0">
+<BorderPane fx:id="detailsRoot" styleClass="app-root" stylesheets="@main-view.css" xmlns="http://javafx.com/javafx/25" xmlns:fx="http://javafx.com/fxml/1">
+    <top>
+        <HBox fx:id="detailsWindowDragBar" alignment="CENTER_RIGHT" spacing="6.0" styleClass="window-drag-bar">
             <padding>
-                <Insets top="0.0" right="8.0" bottom="2.0" left="8.0"/>
+                <Insets top="4.0" right="8.0" bottom="2.0" left="8.0"/>
             </padding>
             <children>
                 <Region HBox.hgrow="ALWAYS"/>
-                <Button fx:id="detailsWindowMinimizeButton" mnemonicParsing="false" text="—"/>
-                <Button fx:id="detailsWindowCloseButton" mnemonicParsing="false" text="✕"/>
+                <Button fx:id="detailsWindowMinimizeButton" mnemonicParsing="false" styleClass="window-button" text="—"/>
+                <Button fx:id="detailsWindowCloseButton" mnemonicParsing="false" styleClass="window-close-square-button" text="✕"/>
             </children>
         </HBox>
-
-        <VBox fillWidth="true" spacing="8.0">
+    </top>
+    <center>
+        <VBox fillWidth="true" spacing="6.0">
             <padding>
-                <Insets top="12.0" right="12.0" bottom="12.0" left="12.0"/>
+                <Insets top="12.0" right="16.0" bottom="12.0" left="16.0"/>
             </padding>
             <children>
-                <Label fx:id="detailsNameLabel"/>
-                <Label fx:id="detailsFolderLabel"/>
-                <Label fx:id="detailsGameModeLabel"/>
-                <Label fx:id="detailsPatchLabel"/>
-                <Label fx:id="detailsLastPlayedLabel"/>
-                <Label fx:id="detailsWhitelistTitle" text="Whitelist"/>
-                <CheckBox fx:id="detailsWhitelistEnabledCheckBox" mnemonicParsing="false" text="Whitelist enabled"/>
-                <ListView fx:id="detailsWhitelistList" prefHeight="180.0"/>
+                <Label fx:id="detailsNameLabel" styleClass="panel-title"/>
+                <Label fx:id="detailsFolderLabel" styleClass="field-label"/>
+                <Label fx:id="detailsGameModeLabel" styleClass="field-label"/>
+                <Label fx:id="detailsPatchLabel" styleClass="field-label"/>
+                <Label fx:id="detailsLastPlayedLabel" styleClass="field-label"/>
+                <Label fx:id="detailsWhitelistTitle" styleClass="panel-title" text="Whitelist"/>
+                <CheckBox fx:id="detailsWhitelistEnabledCheckBox" mnemonicParsing="false" styleClass="details-checkbox" text="Whitelist enabled"/>
+                <ListView fx:id="detailsWhitelistList" prefHeight="180.0" styleClass="worlds-list"/>
                 <HBox alignment="CENTER_LEFT" spacing="8.0">
                     <children>
-                        <TextField fx:id="detailsUuidInput" promptText="Player UUID" HBox.hgrow="ALWAYS"/>
-                        <Button fx:id="detailsAddUuidButton" mnemonicParsing="false" text="Add UUID"/>
+                        <TextField fx:id="detailsUuidInput" promptText="Player UUID" styleClass="neon-input" HBox.hgrow="ALWAYS"/>
+                        <Button fx:id="detailsAddUuidButton" mnemonicParsing="false" styleClass="action-button" text="Add UUID"/>
                     </children>
                 </HBox>
                 <HBox alignment="CENTER_LEFT" spacing="8.0">
                     <children>
-                        <Button fx:id="detailsRemoveUuidButton" mnemonicParsing="false" text="Remove Selected"/>
-                        <Button fx:id="detailsSaveWhitelistButton" mnemonicParsing="false" text="Save Whitelist"/>
+                        <Button fx:id="detailsRemoveUuidButton" mnemonicParsing="false" styleClass="action-button" text="Remove Selected"/>
+                        <Button fx:id="detailsSaveWhitelistButton" mnemonicParsing="false" styleClass="action-button" text="Save Whitelist"/>
                     </children>
                 </HBox>
-                <Label fx:id="detailsWhitelistStatusLabel"/>
+                <Label fx:id="detailsWhitelistStatusLabel" styleClass="status-label"/>
             </children>
         </VBox>
-    </children>
-</VBox>
+    </center>
+    <bottom>
+        <HBox alignment="CENTER_RIGHT" spacing="8.0">
+            <padding>
+                <Insets top="0.0" right="16.0" bottom="12.0" left="16.0"/>
+            </padding>
+            <children>
+                <Button fx:id="detailsDeleteWorldButton" mnemonicParsing="false" styleClass="danger-action-button" text="Delete World"/>
+            </children>
+        </HBox>
+    </bottom>
+</BorderPane>
