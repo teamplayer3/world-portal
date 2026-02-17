@@ -8,7 +8,6 @@ import io.worldportal.app.service.WorldService;
 import io.worldportal.app.service.impl.SshConnectionService;
 import io.worldportal.app.service.impl.StubTransferService;
 import io.worldportal.app.service.impl.StubWorldService;
-import io.worldportal.app.service.impl.WhitelistService;
 import io.worldportal.app.service.impl.WorldComparisonService;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -560,19 +559,6 @@ public class MainController {
             return "Unknown";
         }
         return value;
-    }
-
-    private String formatLastPlayed(Instant value) {
-        if (value == null || value.equals(Instant.EPOCH)) {
-            return "Unknown";
-        }
-        return DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
-                .withZone(ZoneId.systemDefault())
-                .format(value);
-    }
-
-    private boolean isLikelyUuid(String uuid) {
-        return uuid.matches("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
     }
 
     private void applyCachedConnectionSettings() {
