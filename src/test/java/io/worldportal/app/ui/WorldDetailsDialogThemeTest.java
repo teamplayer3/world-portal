@@ -39,7 +39,7 @@ class WorldDetailsDialogThemeTest {
             VBox root = new VBox();
             Scene scene = new Scene(root, 520, 520);
 
-            MainController.applyWorldDetailsTheme(scene);
+            WorldDetailsController.applyWorldDetailsTheme(scene);
 
             assertTrue(scene.getStylesheets().stream().anyMatch(path -> path.endsWith("/io/worldportal/app/main-view.css")));
             assertEquals(Color.TRANSPARENT, scene.getFill());

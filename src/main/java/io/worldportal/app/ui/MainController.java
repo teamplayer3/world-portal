@@ -11,7 +11,6 @@ import io.worldportal.app.service.impl.StubWorldService;
 import io.worldportal.app.service.impl.WhitelistService;
 import io.worldportal.app.service.impl.WorldComparisonService;
 import javafx.collections.FXCollections;
-import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
@@ -19,7 +18,6 @@ import javafx.geometry.Pos;
 import javafx.application.Platform;
 import javafx.scene.control.ContentDisplay;
 import javafx.scene.control.ComboBox;
-import javafx.scene.control.CheckBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
@@ -47,28 +45,21 @@ import javafx.scene.shape.Rectangle;
 import java.awt.Desktop;
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import java.util.Map;
 
 public class MainController {
-    private static final Pattern DISPLAY_NAME_FIELD_PATTERN = Pattern.compile("\"DisplayName\"\\s*:\\s*\"([^\"]*)\"");
-
     @FXML
     private ListView<WorldEntry> localWorldsList;
 
@@ -142,7 +133,6 @@ public class MainController {
     private final TransferService transferService;
     private final SshConnectionService sshConnectionService;
     private final WorldComparisonService worldComparisonService;
-    private final WhitelistService whitelistService;
     private final ConnectionSettingsStore connectionSettingsStore;
     private final ObservableList<WorldEntry> localWorlds = FXCollections.observableArrayList();
     private final ObservableList<WorldEntry> remoteWorlds = FXCollections.observableArrayList();
@@ -154,13 +144,11 @@ public class MainController {
                 new StubTransferService(),
                 new SshConnectionService(),
                 new WorldComparisonService(),
-                new WhitelistService(),
                 new ConnectionSettingsStore());
     }
 
     public MainController(WorldService worldService, TransferService transferService) {
         this(worldService, transferService, new SshConnectionService(), new WorldComparisonService(),
-                new WhitelistService(),
                 new ConnectionSettingsStore());
     }
 
@@ -169,13 +157,11 @@ public class MainController {
             TransferService transferService,
             SshConnectionService sshConnectionService,
             WorldComparisonService worldComparisonService,
-            WhitelistService whitelistService,
             ConnectionSettingsStore connectionSettingsStore) {
         this.worldService = worldService;
         this.transferService = transferService;
         this.sshConnectionService = sshConnectionService;
         this.worldComparisonService = worldComparisonService;
-        this.whitelistService = whitelistService;
         this.connectionSettingsStore = connectionSettingsStore;
     }
 
@@ -538,6 +524,7 @@ public class MainController {
         stage.initModality(Modality.NONE);
         stage.initStyle(StageStyle.TRANSPARENT);
         stage.setTitle("World Details - " + displayName(world));
+
         FXMLLoader loader = new FXMLLoader(
                 MainController.class.getResource("/io/worldportal/app/world-details-view.fxml"));
         Region root;
@@ -546,401 +533,16 @@ public class MainController {
         } catch (IOException exception) {
             return;
         }
-        Map<String, Object> namespace = loader.getNamespace();
-        HBox appBar = requiredNode(namespace, "detailsWindowDragBar", HBox.class);
-        Button minimizeButton = requiredNode(namespace, "detailsWindowMinimizeButton", Button.class);
-        Button closeButton = requiredNode(namespace, "detailsWindowCloseButton", Button.class);
-        TextField nameInput = requiredNode(namespace, "detailsNameInput", TextField.class);
-        TextField folderInput = requiredNode(namespace, "detailsFolderInput", TextField.class);
-        Button saveIdentityButton = requiredNode(namespace, "detailsSaveIdentityButton", Button.class);
-        Label identityStatusLabel = requiredNode(namespace, "detailsIdentityStatusLabel", Label.class);
-        Label gameModeLabel = requiredNode(namespace, "detailsGameModeLabel", Label.class);
-        Label patchLabel = requiredNode(namespace, "detailsPatchLabel", Label.class);
-        Label lastPlayedLabel = requiredNode(namespace, "detailsLastPlayedLabel", Label.class);
-        Label whitelistTitle = requiredNode(namespace, "detailsWhitelistTitle", Label.class);
-        CheckBox enabledCheckBox = requiredNode(namespace, "detailsWhitelistEnabledCheckBox", CheckBox.class);
-        ListView<String> playerUuids = requiredStringListView(namespace, "detailsWhitelistList");
-        TextField uuidInput = requiredNode(namespace, "detailsUuidInput", TextField.class);
-        Button addPlayerButton = requiredNode(namespace, "detailsAddUuidButton", Button.class);
-        Button removePlayerButton = requiredNode(namespace, "detailsRemoveUuidButton", Button.class);
-        Button deleteWorldButton = requiredNode(namespace, "detailsDeleteWorldButton", Button.class);
-        Label whitelistStatus = requiredNode(namespace, "detailsWhitelistStatusLabel", Label.class);
-
-        String initialWorldName = displayName(world);
-        Path localPath = world.getPath() == null ? null : Paths.get(world.getPath());
-        String initialFolderName = localPath != null && localPath.getFileName() != null
-                ? localPath.getFileName().toString()
-                : valueOrUnknown(world.getId());
-        nameInput.setText(initialWorldName);
-        folderInput.setText(initialFolderName);
-        saveIdentityButton.setVisible(false);
-        saveIdentityButton.setManaged(false);
-        identityStatusLabel.setText("");
-        gameModeLabel.setText("GameMode: " + valueOrUnknown(world.getGameMode()));
-        patchLabel.setText("Patch: " + valueOrUnknown(world.getPatchLine()));
-        lastPlayedLabel.setText("Last played: " + formatLastPlayed(world.getLastModified()));
 
         Scene detailsScene = new Scene(root, 520, 520);
-        applyWorldDetailsTheme(detailsScene);
-        configureDetailsWindowFrame(stage, appBar, minimizeButton, closeButton);
-
-        final Path[] localPathHolder = new Path[] { localPath };
-        final String[] originalNameHolder = new String[] { initialWorldName };
-        final String[] originalFolderHolder = new String[] { initialFolderName };
-        final boolean[] originalWhitelistEnabledHolder = new boolean[] { true };
-        final List<String> originalWhitelistPlayers = new ArrayList<>();
-        boolean editable = localPath != null && Files.isDirectory(localPath);
-
-        if (!editable) {
-            nameInput.setDisable(true);
-            folderInput.setDisable(true);
-            saveIdentityButton.setDisable(true);
-            identityStatusLabel.setText("Renaming is only available for local world folders.");
-            enabledCheckBox.setDisable(true);
-            playerUuids.setDisable(true);
-            uuidInput.setDisable(true);
-            addPlayerButton.setDisable(true);
-            removePlayerButton.setDisable(true);
-            deleteWorldButton.setDisable(true);
-            whitelistStatus.setText("Whitelist editing is only available for local world folders.");
-        } else {
-            Runnable updateSaveButton = () -> {
-                boolean identityChanged = hasWorldIdentityChanges(
-                        originalNameHolder[0],
-                        originalFolderHolder[0],
-                        nameInput.getText(),
-                        folderInput.getText());
-                boolean whitelistChanged = hasWhitelistChanges(
-                        originalWhitelistEnabledHolder[0],
-                        originalWhitelistPlayers,
-                        enabledCheckBox.isSelected(),
-                        playerUuids.getItems());
-                boolean changed = identityChanged || whitelistChanged;
-                saveIdentityButton.setVisible(changed);
-                saveIdentityButton.setManaged(changed);
-                if (!changed) {
-                    identityStatusLabel.setText("");
-                }
-            };
-            nameInput.textProperty().addListener((obs, oldValue, newValue) -> updateSaveButton.run());
-            folderInput.textProperty().addListener((obs, oldValue, newValue) -> updateSaveButton.run());
-            enabledCheckBox.selectedProperty().addListener((obs, oldValue, newValue) -> updateSaveButton.run());
-
-            WhitelistService.WhitelistConfig loadedWhitelist =
-                    loadWhitelistIntoDialog(localPathHolder[0], enabledCheckBox, playerUuids, whitelistStatus);
-            originalWhitelistEnabledHolder[0] = loadedWhitelist.enabled();
-            originalWhitelistPlayers.clear();
-            originalWhitelistPlayers.addAll(loadedWhitelist.playerUuids());
-            playerUuids.getItems().addListener((ListChangeListener<String>) change -> updateSaveButton.run());
-            updateSaveButton.run();
-
-            saveIdentityButton.setOnAction(event -> {
-                String requestedName = normalizeIdentityInput(nameInput.getText());
-                String requestedFolder = normalizeIdentityInput(folderInput.getText());
-                boolean identityChanged = hasWorldIdentityChanges(
-                        originalNameHolder[0],
-                        originalFolderHolder[0],
-                        requestedName,
-                        requestedFolder);
-                boolean whitelistChanged = hasWhitelistChanges(
-                        originalWhitelistEnabledHolder[0],
-                        originalWhitelistPlayers,
-                        enabledCheckBox.isSelected(),
-                        playerUuids.getItems());
-                if (!identityChanged && !whitelistChanged) {
-                    return;
-                }
-
-                if (identityChanged) {
-                    String folderValidation = validateFolderRename(localPathHolder[0], requestedFolder);
-                    if (folderValidation != null) {
-                        identityStatusLabel.setText(folderValidation);
-                        return;
-                    }
-                }
-
-                Path targetFolder = localPathHolder[0].resolveSibling(requestedFolder);
-                try {
-                    if (identityChanged && !targetFolder.equals(localPathHolder[0])) {
-                        Files.move(localPathHolder[0], targetFolder);
-                    }
-                    if (identityChanged) {
-                        updateWorldDisplayName(targetFolder, requestedName);
-                    }
-                    if (whitelistChanged) {
-                        whitelistService.save(
-                                targetFolder,
-                                new WhitelistService.WhitelistConfig(enabledCheckBox.isSelected(),
-                                        new ArrayList<>(playerUuids.getItems())));
-                    }
-
-                    localPathHolder[0] = targetFolder;
-                    if (identityChanged) {
-                        world.setPath(targetFolder.toString());
-                        world.setId(requestedFolder);
-                        world.setName(requestedName);
-                        stage.setTitle("World Details - " + requestedName);
-                        originalNameHolder[0] = requestedName;
-                        originalFolderHolder[0] = requestedFolder;
-                    }
-                    originalWhitelistEnabledHolder[0] = enabledCheckBox.isSelected();
-                    originalWhitelistPlayers.clear();
-                    originalWhitelistPlayers.addAll(playerUuids.getItems());
-                    updateSaveButton.run();
-                    whitelistStatus.setText("");
-                    identityStatusLabel.setText("Changes saved.");
-                    refreshLists();
-                } catch (IOException exception) {
-                    identityStatusLabel.setText("Failed to save changes: " + exception.getMessage());
-                }
-            });
-
-            addPlayerButton.setOnAction(event -> {
-                String uuid = uuidInput.getText() == null ? "" : uuidInput.getText().trim();
-                if (uuid.isBlank() || !isLikelyUuid(uuid)) {
-                    whitelistStatus.setText("Invalid UUID format.");
-                    return;
-                }
-                if (!playerUuids.getItems().contains(uuid)) {
-                    playerUuids.getItems().add(uuid);
-                }
-                uuidInput.clear();
-                whitelistStatus.setText("");
-            });
-
-            removePlayerButton.setOnAction(event -> {
-                String selected = playerUuids.getSelectionModel().getSelectedItem();
-                if (selected != null) {
-                    playerUuids.getItems().remove(selected);
-                }
-            });
-
-            deleteWorldButton.setOnAction(event ->
-                    openDeleteWorldConfirmationWindow(stage, world, localPathHolder[0]));
-        }
-
+        WorldDetailsController.applyWorldDetailsTheme(detailsScene);
         stage.setScene(detailsScene);
+        WorldDetailsController controller = loader.getController();
+        if (controller == null) {
+            return;
+        }
+        controller.initializeDialog(stage, world, this::refreshLists);
         stage.show();
-    }
-
-    private void openDeleteWorldConfirmationWindow(Stage owner, WorldEntry world, Path worldPath) {
-        Stage confirmStage = new Stage();
-        confirmStage.initOwner(owner);
-        confirmStage.initModality(Modality.WINDOW_MODAL);
-        confirmStage.initStyle(StageStyle.TRANSPARENT);
-        confirmStage.setTitle("Delete World - " + displayName(world));
-
-        FXMLLoader loader = new FXMLLoader(
-                MainController.class.getResource("/io/worldportal/app/world-delete-confirmation-view.fxml"));
-        Region root;
-        try {
-            root = loader.load();
-        } catch (IOException exception) {
-            return;
-        }
-
-        Map<String, Object> namespace = loader.getNamespace();
-        Label promptLabel = requiredNode(namespace, "deleteWorldPromptLabel", Label.class);
-        TextField worldNameInput = requiredNode(namespace, "deleteWorldNameInput", TextField.class);
-        Label statusLabel = requiredNode(namespace, "deleteWorldStatusLabel", Label.class);
-        Button confirmButton = requiredNode(namespace, "confirmDeleteWorldButton", Button.class);
-        Button cancelButton = requiredNode(namespace, "cancelDeleteWorldButton", Button.class);
-
-        String expectedName = displayName(world);
-        promptLabel.setText("Type \"" + expectedName + "\" to confirm deletion.");
-
-        cancelButton.setOnAction(event -> confirmStage.close());
-        confirmButton.setOnAction(event -> {
-            if (!matchesDeleteConfirmation(expectedName, worldNameInput.getText())) {
-                statusLabel.setText("World name does not match.");
-                return;
-            }
-
-            confirmButton.setDisable(true);
-            cancelButton.setDisable(true);
-            statusLabel.setText("Deleting world...");
-
-            runAsync(() -> {
-                try {
-                    deleteWorldDirectory(worldPath);
-                    Platform.runLater(() -> {
-                        confirmStage.close();
-                        owner.close();
-                        refreshLists();
-                    });
-                } catch (IOException exception) {
-                    Platform.runLater(() -> {
-                        statusLabel.setText("Failed to delete world: " + exception.getMessage());
-                        confirmButton.setDisable(false);
-                        cancelButton.setDisable(false);
-                    });
-                }
-            });
-        });
-
-        Scene confirmationScene = new Scene(root, 420, 220);
-        applyWorldDetailsTheme(confirmationScene);
-        confirmStage.setScene(confirmationScene);
-        confirmStage.show();
-        Platform.runLater(worldNameInput::requestFocus);
-    }
-
-    private static boolean matchesDeleteConfirmation(String expectedWorldName, String enteredWorldName) {
-        if (expectedWorldName == null || enteredWorldName == null) {
-            return false;
-        }
-        return expectedWorldName.equals(enteredWorldName.trim());
-    }
-
-    private static boolean hasWorldIdentityChanges(
-            String originalName,
-            String originalFolder,
-            String enteredName,
-            String enteredFolder) {
-        String normalizedOriginalName = normalizeIdentityInput(originalName);
-        String normalizedOriginalFolder = normalizeIdentityInput(originalFolder);
-        String normalizedEnteredName = normalizeIdentityInput(enteredName);
-        String normalizedEnteredFolder = normalizeIdentityInput(enteredFolder);
-
-        return !normalizedOriginalName.equals(normalizedEnteredName)
-                || !normalizedOriginalFolder.equals(normalizedEnteredFolder);
-    }
-
-    private static boolean hasWhitelistChanges(
-            boolean originalEnabled,
-            List<String> originalPlayers,
-            boolean enteredEnabled,
-            List<String> enteredPlayers) {
-        List<String> baselinePlayers = originalPlayers == null ? List.of() : originalPlayers;
-        List<String> currentPlayers = enteredPlayers == null ? List.of() : enteredPlayers;
-        return originalEnabled != enteredEnabled || !baselinePlayers.equals(currentPlayers);
-    }
-
-    private static String validateFolderRename(Path worldFolderPath, String requestedFolderName) {
-        if (worldFolderPath == null) {
-            return "World folder is unavailable.";
-        }
-
-        String normalizedFolderName = normalizeIdentityInput(requestedFolderName);
-        if (normalizedFolderName.isBlank()) {
-            return "World folder name cannot be empty.";
-        }
-        if (normalizedFolderName.contains("/") || normalizedFolderName.contains("\\")) {
-            return "World folder name cannot include path separators.";
-        }
-
-        Path requestedFolderPath = worldFolderPath.resolveSibling(normalizedFolderName);
-        if (requestedFolderPath.equals(worldFolderPath)) {
-            return null;
-        }
-        if (Files.exists(requestedFolderPath)) {
-            return "A world folder with this name already exists.";
-        }
-        return null;
-    }
-
-    private static void updateWorldDisplayName(Path worldFolderPath, String worldName) throws IOException {
-        if (worldFolderPath == null) {
-            throw new IOException("World folder is unavailable.");
-        }
-
-        String normalizedWorldName = normalizeIdentityInput(worldName);
-        Path configPath = worldFolderPath.resolve("universe/worlds/default/config.json");
-        if (!Files.exists(configPath)) {
-            throw new IOException("World config file does not exist.");
-        }
-
-        String config = Files.readString(configPath, StandardCharsets.UTF_8);
-        String escapedName = escapeJson(normalizedWorldName);
-        Matcher displayNameMatcher = DISPLAY_NAME_FIELD_PATTERN.matcher(config);
-        if (displayNameMatcher.find()) {
-            String replacement = Matcher.quoteReplacement("\"DisplayName\": \"" + escapedName + "\"");
-            config = displayNameMatcher.replaceFirst(replacement);
-        } else {
-            String insertion = "{\n  \"DisplayName\": \"" + escapedName + "\",";
-            config = config.replaceFirst("\\{", Matcher.quoteReplacement(insertion));
-        }
-        Files.writeString(configPath, config, StandardCharsets.UTF_8);
-    }
-
-    private static String normalizeIdentityInput(String value) {
-        return value == null ? "" : value.trim();
-    }
-
-    private static String escapeJson(String value) {
-        return value
-                .replace("\\", "\\\\")
-                .replace("\"", "\\\"");
-    }
-
-    private static void deleteWorldDirectory(Path worldPath) throws IOException {
-        if (worldPath == null || !Files.exists(worldPath)) {
-            return;
-        }
-        try (Stream<Path> paths = Files.walk(worldPath)) {
-            for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
-                Files.deleteIfExists(path);
-            }
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private static <T> T requiredNode(Map<String, Object> namespace, String id, Class<T> expectedType) {
-        Object value = namespace.get(id);
-        if (value == null) {
-            throw new IllegalStateException("Missing node: " + id);
-        }
-        if (!expectedType.isInstance(value)) {
-            throw new IllegalStateException("Unexpected node type for '" + id + "'");
-        }
-        return (T) value;
-    }
-
-    @SuppressWarnings("unchecked")
-    private static ListView<String> requiredStringListView(Map<String, Object> namespace, String id) {
-        return (ListView<String>) requiredNode(namespace, id, ListView.class);
-    }
-
-    static void applyWorldDetailsTheme(Scene scene) {
-        scene.setFill(Color.TRANSPARENT);
-    }
-
-    private static void configureDetailsWindowFrame(
-            Stage stage,
-            HBox appBar,
-            Button minimizeButton,
-            Button closeButton) {
-        minimizeButton.setOnAction(event -> stage.setIconified(true));
-        closeButton.setOnAction(event -> stage.close());
-
-        final double[] dragOffset = new double[2];
-        appBar.setOnMousePressed(event -> {
-            dragOffset[0] = stage.getX() - event.getScreenX();
-            dragOffset[1] = stage.getY() - event.getScreenY();
-        });
-        appBar.setOnMouseDragged(event -> {
-            stage.setX(event.getScreenX() + dragOffset[0]);
-            stage.setY(event.getScreenY() + dragOffset[1]);
-        });
-    }
-
-    private WhitelistService.WhitelistConfig loadWhitelistIntoDialog(
-            Path worldPath,
-            CheckBox enabledCheckBox,
-            ListView<String> playerUuids,
-            Label statusLabel) {
-        try {
-            WhitelistService.WhitelistConfig config = whitelistService.load(worldPath);
-            enabledCheckBox.setSelected(config.enabled());
-            playerUuids.setItems(FXCollections.observableArrayList(config.playerUuids()));
-            statusLabel.setText("");
-            return config;
-        } catch (IOException exception) {
-            enabledCheckBox.setSelected(true);
-            playerUuids.setItems(FXCollections.observableArrayList());
-            statusLabel.setText("Failed to load whitelist: " + exception.getMessage());
-            return new WhitelistService.WhitelistConfig(true, List.of());
-        }
     }
 
     private String displayName(WorldEntry world) {
@@ -1087,7 +689,8 @@ public class MainController {
         private final Button transferButton = new Button();
         private final Tooltip transferTooltip;
         private final Button openDirectoryButton = new Button("Open Dir");
-        private final HBox content = new HBox(10.0, previewImageView, textContainer, transferButton, openDirectoryButton);
+        private final HBox content = new HBox(10.0, previewImageView, textContainer, transferButton,
+                openDirectoryButton);
         private final boolean openDirectoryEnabled;
         private final String transferTooltipText;
         private final Consumer<WorldEntry> transferAction;
