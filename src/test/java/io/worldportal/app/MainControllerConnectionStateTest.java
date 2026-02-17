@@ -22,9 +22,11 @@ import org.junit.jupiter.api.Assumptions;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -244,6 +246,66 @@ class MainControllerConnectionStateTest {
         method.invoke(null, worldDir);
 
         assertFalse(Files.exists(worldDir));
+    }
+
+    @Test
+    void folderRenameValidationRejectsExistingSiblingFolder() throws Exception {
+        Path savesRoot = Files.createTempDirectory("world-rename-validation");
+        Path currentWorldFolder = Files.createDirectories(savesRoot.resolve("SkyHold"));
+        Files.createDirectories(savesRoot.resolve("AlreadyExists"));
+
+        Method method = MainController.class.getDeclaredMethod(
+                "validateFolderRename", Path.class, String.class);
+        method.setAccessible(true);
+
+        String validationError = (String) method.invoke(null, currentWorldFolder, "AlreadyExists");
+        assertEquals("A world folder with this name already exists.", validationError);
+    }
+
+    @Test
+    void worldDetailsChangeDetectionTracksNameAndFolderInputs() throws Exception {
+        Method method = MainController.class.getDeclaredMethod(
+                "hasWorldIdentityChanges",
+                String.class,
+                String.class,
+                String.class,
+                String.class);
+        method.setAccessible(true);
+
+        assertFalse((boolean) method.invoke(null, "SkyHold", "sky-hold", "SkyHold", "sky-hold"));
+        assertTrue((boolean) method.invoke(null, "SkyHold", "sky-hold", "Sky Keep", "sky-hold"));
+        assertTrue((boolean) method.invoke(null, "SkyHold", "sky-hold", "SkyHold", "sky-keep"));
+    }
+
+    @Test
+    void updateWorldDisplayNameRewritesConfigDisplayName() throws Exception {
+        Path worldDir = Files.createTempDirectory("world-rename-config");
+        Path configDir = Files.createDirectories(worldDir.resolve("universe/worlds/default"));
+        Path configFile = configDir.resolve("config.json");
+        Files.writeString(configFile, "{ \"DisplayName\": \"Old Name\" }", StandardCharsets.UTF_8);
+
+        Method method = MainController.class.getDeclaredMethod(
+                "updateWorldDisplayName", Path.class, String.class);
+        method.setAccessible(true);
+        method.invoke(null, worldDir, "New Name");
+
+        String updatedConfig = Files.readString(configFile, StandardCharsets.UTF_8);
+        assertTrue(updatedConfig.contains("\"DisplayName\": \"New Name\""));
+    }
+
+    @Test
+    void whitelistChangeDetectionTracksEnabledFlagAndPlayerList() throws Exception {
+        Method method = MainController.class.getDeclaredMethod(
+                "hasWhitelistChanges",
+                boolean.class,
+                List.class,
+                boolean.class,
+                List.class);
+        method.setAccessible(true);
+
+        assertFalse((boolean) method.invoke(null, true, List.of("a", "b"), true, List.of("a", "b")));
+        assertTrue((boolean) method.invoke(null, true, List.of("a", "b"), false, List.of("a", "b")));
+        assertTrue((boolean) method.invoke(null, true, List.of("a", "b"), true, List.of("a", "b", "c")));
     }
 
     private static void invokeBusyState(MainController controller, boolean busy) {

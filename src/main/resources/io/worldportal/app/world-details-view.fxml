@@ -32,8 +32,18 @@
                 <Insets top="12.0" right="16.0" bottom="12.0" left="16.0"/>
             </padding>
             <children>
-                <Label fx:id="detailsNameLabel" styleClass="panel-title"/>
-                <Label fx:id="detailsFolderLabel" styleClass="field-label"/>
+                <HBox alignment="CENTER_LEFT" spacing="8.0">
+                    <children>
+                        <Label styleClass="field-label" text="Name"/>
+                        <TextField fx:id="detailsNameInput" promptText="World name" styleClass="neon-input" HBox.hgrow="ALWAYS"/>
+                    </children>
+                </HBox>
+                <HBox alignment="CENTER_LEFT" spacing="8.0">
+                    <children>
+                        <Label styleClass="field-label" text="Folder"/>
+                        <TextField fx:id="detailsFolderInput" promptText="Folder name" styleClass="neon-input" HBox.hgrow="ALWAYS"/>
+                    </children>
+                </HBox>
                 <Label fx:id="detailsGameModeLabel" styleClass="field-label"/>
                 <Label fx:id="detailsPatchLabel" styleClass="field-label"/>
                 <Label fx:id="detailsLastPlayedLabel" styleClass="field-label"/>
@@ -49,10 +59,10 @@
                 <HBox alignment="CENTER_LEFT" spacing="8.0">
                     <children>
                         <Button fx:id="detailsRemoveUuidButton" mnemonicParsing="false" styleClass="action-button" text="Remove Selected"/>
-                        <Button fx:id="detailsSaveWhitelistButton" mnemonicParsing="false" styleClass="action-button" text="Save Whitelist"/>
                     </children>
                 </HBox>
                 <Label fx:id="detailsWhitelistStatusLabel" styleClass="status-label"/>
+                <Label fx:id="detailsIdentityStatusLabel" styleClass="status-label"/>
             </children>
         </VBox>
     </center>
@@ -62,6 +72,7 @@
                 <Insets top="0.0" right="16.0" bottom="12.0" left="16.0"/>
             </padding>
             <children>
+                <Button fx:id="detailsSaveIdentityButton" managed="false" mnemonicParsing="false" styleClass="action-button" text="Save Changes" visible="false"/>
                 <Button fx:id="detailsDeleteWorldButton" mnemonicParsing="false" styleClass="danger-action-button" text="Delete World"/>
             </children>
         </HBox>
