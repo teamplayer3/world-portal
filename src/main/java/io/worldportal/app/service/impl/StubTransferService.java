@@ -17,6 +17,8 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.function.Predicate;
 import java.util.Set;
@@ -26,6 +28,7 @@ import java.util.zip.ZipOutputStream;
 
 public class StubTransferService implements TransferService {
     private static final long REMOTE_COMMAND_TIMEOUT_MILLIS = 30_000L;
+    private static final DateTimeFormatter BACKUP_FILE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss");
     private static final Set<String> INCLUDED_ROOT_FILES = Set.of(
             "bans.json",
             "client_metadata.json",
@@ -34,6 +37,8 @@ public class StubTransferService implements TransferService {
             "preview.png",
             "whitelist.json");
     private static final Set<String> INCLUDED_ROOT_DIRECTORIES = Set.of("mods", "universe");
+    private static final Set<String> INCLUDED_UNIVERSE_FILES = Set.of("memories.json", "memories.json.bak");
+    private static final Set<String> INCLUDED_UNIVERSE_DIRECTORIES = Set.of("players", "worlds");
 
     @Override
     public void uploadWorld(WorldEntry world, RemoteProfile profile) {
@@ -134,6 +139,7 @@ public class StubTransferService implements TransferService {
         ChannelSftp channel = null;
         try {
             Files.createDirectories(localTargetWorld);
+            createUniverseBackup(localTargetWorld, LocalDateTime.now());
             session = SshSessionFactory.createConnectedSession(profile);
             channel = (ChannelSftp) session.openChannel("sftp");
             channel.connect(15000);
@@ -173,6 +179,7 @@ public class StubTransferService implements TransferService {
             session = SshSessionFactory.createConnectedSession(profile);
             channel = (ChannelSftp) session.openChannel("sftp");
             channel.connect(15000);
+            createRemoteUniverseBackup(channel, remoteWorld.getPath(), LocalDateTime.now());
 
             uploadIncludedEntries(channel, localWorldPath, remoteWorld.getPath());
         } catch (Exception failure) {
@@ -278,6 +285,30 @@ public class StubTransferService implements TransferService {
         }
     }
 
+    Path createUniverseBackup(Path worldDirectory, LocalDateTime backupTime) throws IOException {
+        Path backupDirectory = worldDirectory.resolve("backup");
+        Files.createDirectories(backupDirectory);
+        Path universeDirectory = worldDirectory.resolve("universe");
+        String timestamp = BACKUP_FILE_TIME_FORMATTER.format(backupTime);
+        Path backupArchive = backupDirectory.resolve(timestamp + ".zip");
+        try (OutputStream out = Files.newOutputStream(backupArchive, StandardOpenOption.CREATE_NEW);
+                ZipOutputStream zipOutputStream = new ZipOutputStream(out)) {
+            for (String fileName : INCLUDED_UNIVERSE_FILES) {
+                Path candidate = universeDirectory.resolve(fileName);
+                if (Files.isRegularFile(candidate)) {
+                    addFileToZip(universeDirectory, candidate, zipOutputStream);
+                }
+            }
+            for (String directoryName : INCLUDED_UNIVERSE_DIRECTORIES) {
+                Path directory = universeDirectory.resolve(directoryName);
+                if (Files.isDirectory(directory)) {
+                    addDirectoryToZip(universeDirectory, directory, zipOutputStream);
+                }
+            }
+        }
+        return backupArchive;
+    }
+
     Path createWorldArchive(Path worldDirectory) throws IOException {
         Path archive = Files.createTempFile("world-portal-upload-", ".zip");
         try (OutputStream out = Files.newOutputStream(archive, StandardOpenOption.TRUNCATE_EXISTING);
@@ -340,6 +371,86 @@ public class StubTransferService implements TransferService {
         zipOutputStream.putNextEntry(new ZipEntry(entryName));
         Files.copy(file, zipOutputStream);
         zipOutputStream.closeEntry();
+    }
+
+    private void createRemoteUniverseBackup(ChannelSftp channel, String remoteWorldPath, LocalDateTime backupTime)
+            throws Exception {
+        String normalizedRemoteWorldPath = normalizeRemotePath(remoteWorldPath);
+        String remoteUniversePath = normalizedRemoteWorldPath + "/universe";
+        if (!remoteExists(channel, remoteUniversePath)) {
+            return;
+        }
+        String remoteBackupDirectory = normalizedRemoteWorldPath + "/backup";
+        ensureRemoteDirectories(channel, remoteBackupDirectory);
+
+        Path localArchive = Files.createTempFile("world-portal-sync-backup-", ".zip");
+        try (OutputStream out = Files.newOutputStream(localArchive, StandardOpenOption.TRUNCATE_EXISTING);
+                ZipOutputStream zipOutputStream = new ZipOutputStream(out)) {
+            for (String fileName : INCLUDED_UNIVERSE_FILES) {
+                String remoteFile = remoteUniversePath + "/" + fileName;
+                if (remoteExists(channel, remoteFile)) {
+                    addRemoteFileToZip(channel, remoteUniversePath, remoteFile, zipOutputStream);
+                }
+            }
+            for (String directoryName : INCLUDED_UNIVERSE_DIRECTORIES) {
+                String remoteDirectory = remoteUniversePath + "/" + directoryName;
+                if (remoteExists(channel, remoteDirectory)) {
+                    addRemoteDirectoryToZip(channel, remoteUniversePath, remoteDirectory, zipOutputStream);
+                }
+            }
+        }
+
+        String archiveName = BACKUP_FILE_TIME_FORMATTER.format(backupTime) + ".zip";
+        String remoteArchivePath = remoteBackupDirectory + "/" + archiveName;
+        try {
+            channel.put(localArchive.toString(), remoteArchivePath);
+        } finally {
+            Files.deleteIfExists(localArchive);
+        }
+    }
+
+    private void addRemoteDirectoryToZip(
+            ChannelSftp channel,
+            String remoteUniversePath,
+            String remoteDirectoryPath,
+            ZipOutputStream zipOutputStream) throws Exception {
+        @SuppressWarnings("unchecked")
+        List<ChannelSftp.LsEntry> entries = channel.ls(remoteDirectoryPath);
+        for (ChannelSftp.LsEntry entry : entries) {
+            String name = entry.getFilename();
+            if (".".equals(name) || "..".equals(name)) {
+                continue;
+            }
+            String remoteChild = remoteDirectoryPath + "/" + name;
+            if (entry.getAttrs().isDir()) {
+                addRemoteDirectoryToZip(channel, remoteUniversePath, remoteChild, zipOutputStream);
+            } else {
+                addRemoteFileToZip(channel, remoteUniversePath, remoteChild, zipOutputStream);
+            }
+        }
+    }
+
+    private void addRemoteFileToZip(
+            ChannelSftp channel,
+            String remoteUniversePath,
+            String remoteFilePath,
+            ZipOutputStream zipOutputStream) throws Exception {
+        String entryName = toRelativeRemotePath(remoteUniversePath, remoteFilePath);
+        zipOutputStream.putNextEntry(new ZipEntry(entryName));
+        try (InputStream in = channel.get(remoteFilePath)) {
+            in.transferTo(zipOutputStream);
+        }
+        zipOutputStream.closeEntry();
+    }
+
+    private String toRelativeRemotePath(String rootPath, String childPath) {
+        String normalizedRoot = normalizeRemotePath(rootPath);
+        String normalizedChild = normalizeRemotePath(childPath);
+        String prefix = normalizedRoot + "/";
+        if (normalizedChild.startsWith(prefix)) {
+            return normalizedChild.substring(prefix.length());
+        }
+        return normalizedChild;
     }
 
     private void uploadIncludedEntries(ChannelSftp channel, Path localWorldPath, String remoteWorldPath)

@@ -6,6 +6,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDateTime;
 import java.util.Set;
 import java.util.zip.ZipFile;
 
@@ -100,5 +101,31 @@ class StubTransferServiceArchiveTest {
         StubTransferService service = new StubTransferService();
 
         assertThrows(IOException.class, () -> service.assertContainsFiles(emptyWorld));
+    }
+
+    @Test
+    void createUniverseBackupStoresUniverseSnapshotInWorldBackupDirectory() throws IOException {
+        Path worldDir = tempDir.resolve("MyWorld");
+        Files.createDirectories(worldDir.resolve("universe/players"));
+        Files.createDirectories(worldDir.resolve("universe/worlds/default"));
+        Files.writeString(worldDir.resolve("universe/memories.json"), "{\"tick\":1}");
+        Files.writeString(worldDir.resolve("universe/memories.json.bak"), "{\"tick\":0}");
+        Files.writeString(worldDir.resolve("universe/players/player.json"), "{\"id\":\"p1\"}");
+        Files.writeString(worldDir.resolve("universe/worlds/default/config.json"), "{\"name\":\"default\"}");
+        Files.writeString(worldDir.resolve("universe/ignored.txt"), "ignore");
+
+        StubTransferService service = new StubTransferService();
+
+        Path backupArchive = service.createUniverseBackup(worldDir, LocalDateTime.of(2024, 1, 15, 14, 30, 0));
+
+        assertTrue(Files.exists(backupArchive));
+        assertTrue(backupArchive.equals(worldDir.resolve("backup/2024-01-15_14-30-00.zip")));
+        try (ZipFile zipFile = new ZipFile(backupArchive.toFile())) {
+            assertNotNull(zipFile.getEntry("memories.json"));
+            assertNotNull(zipFile.getEntry("memories.json.bak"));
+            assertNotNull(zipFile.getEntry("players/player.json"));
+            assertNotNull(zipFile.getEntry("worlds/default/config.json"));
+            assertTrue(zipFile.getEntry("ignored.txt") == null);
+        }
     }
 }
