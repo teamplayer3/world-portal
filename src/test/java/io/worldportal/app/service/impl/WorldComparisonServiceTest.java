@@ -44,14 +44,16 @@ class WorldComparisonServiceTest {
     }
 
     @Test
-    void doesNotMarkWhenGameTimeDiffers() {
+    void marksSameWorldWhenUuidMatchesEvenIfGameTimeDiffers() {
         WorldEntry local = world("LocalTest", "abc123", "2026-02-07T12:00:00Z");
         WorldEntry remote = world("RemoteProd", "abc123", "2026-02-07T13:00:00Z");
 
         new WorldComparisonService().annotateMatches(List.of(local), List.of(remote));
 
-        assertEquals(0, local.getSameWorldReferences().size());
-        assertEquals(0, remote.getSameWorldReferences().size());
+        assertEquals(1, local.getSameWorldReferences().size());
+        assertEquals(1, remote.getSameWorldReferences().size());
+        assertTrue(local.getSameWorldReferences().contains(remote));
+        assertTrue(remote.getSameWorldReferences().contains(local));
     }
 
     private WorldEntry world(String name, String uuid, String gameTime) {

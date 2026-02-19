@@ -52,6 +52,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
@@ -59,6 +60,8 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class MainController {
+    private static final String REMOTE_WORLDS_TITLE = "Remote Worlds";
+
     @FXML
     private ListView<WorldEntry> localWorldsList;
 
@@ -125,6 +128,9 @@ public class MainController {
     @FXML
     private Label transferStatusLabel;
 
+    @FXML
+    private Label remoteWorldsTitleLabel;
+
     private volatile boolean remoteConnectionBusy;
     private volatile boolean transferBusy;
 
@@ -172,6 +178,7 @@ public class MainController {
                 ">>",
                 "Upload",
                 this::onUploadWorld,
+                this::onSyncWorld,
                 this::canTransferFromListCell));
         localWorldsList.getSelectionModel().selectedItemProperty()
                 .addListener((obs, oldValue, newValue) -> syncTransferButtons());
@@ -179,7 +186,7 @@ public class MainController {
             if (event.getButton() == MouseButton.PRIMARY && event.getClickCount() == 2) {
                 WorldEntry selected = localWorldsList.getSelectionModel().getSelectedItem();
                 if (selected != null) {
-                    openWorldDetailsWindow(selected);
+                    openWorldDetailsWindow(selected, false);
                 }
             }
         });
@@ -189,6 +196,7 @@ public class MainController {
                 "<<",
                 "Download",
                 this::onDownloadWorld,
+                this::onSyncWorld,
                 this::canTransferFromListCell));
         remoteWorldsList.getSelectionModel().selectedItemProperty()
                 .addListener((obs, oldValue, newValue) -> syncTransferButtons());
@@ -196,7 +204,7 @@ public class MainController {
             if (event.getButton() == MouseButton.PRIMARY && event.getClickCount() == 2) {
                 WorldEntry selected = remoteWorldsList.getSelectionModel().getSelectedItem();
                 if (selected != null) {
-                    openWorldDetailsWindow(selected);
+                    openWorldDetailsWindow(selected, true);
                 }
             }
         });
@@ -278,6 +286,44 @@ public class MainController {
                 "Download finished.",
                 () -> {
                     transferService.downloadWorld(selectedWorld, buildRemoteProfile());
+                    refreshLists();
+                });
+    }
+
+    private void onSyncWorld(WorldEntry selectedWorld) {
+        if (selectedWorld == null || selectedWorld.getSameWorldReferences().isEmpty()) {
+            return;
+        }
+
+        WorldEntry counterpart = selectedWorld.getSameWorldReferences().stream()
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(null);
+        if (counterpart == null) {
+            return;
+        }
+
+        WorldEntry localWorld = localWorlds.contains(selectedWorld) ? selectedWorld : counterpart;
+        WorldEntry remoteWorld = remoteWorlds.contains(selectedWorld) ? selectedWorld : counterpart;
+        if (!localWorlds.contains(localWorld) || !remoteWorlds.contains(remoteWorld)) {
+            return;
+        }
+
+        Instant localTime = worldStateTime(localWorld);
+        Instant remoteTime = worldStateTime(remoteWorld);
+        if (!remoteTime.isAfter(localTime) && !localTime.isAfter(remoteTime)) {
+            return;
+        }
+
+        runTransferAsync(
+                "Syncing...",
+                "Sync finished.",
+                () -> {
+                    if (remoteTime.isAfter(localTime)) {
+                        transferService.syncRemoteToLocalWorld(remoteWorld, localWorld, buildRemoteProfile());
+                    } else {
+                        transferService.syncLocalToRemoteWorld(localWorld, remoteWorld, buildRemoteProfile());
+                    }
                     refreshLists();
                 });
     }
@@ -467,6 +513,7 @@ public class MainController {
 
     private void syncTransferButtons() {
         boolean connected = isRemoteConnected();
+        updateRemoteWorldsTitle(connected);
         boolean localSelected = localWorldsList != null
                 && localWorldsList.getSelectionModel().getSelectedItem() != null;
         boolean remoteSelected = remoteWorldsList != null
@@ -486,6 +533,24 @@ public class MainController {
         if (remoteWorldsList != null) {
             remoteWorldsList.refresh();
         }
+    }
+
+    private void updateRemoteWorldsTitle(boolean connected) {
+        if (remoteWorldsTitleLabel == null) {
+            return;
+        }
+        if (!connected) {
+            remoteWorldsTitleLabel.setText(REMOTE_WORLDS_TITLE);
+            return;
+        }
+        String username = usernameField == null || usernameField.getText() == null ? "" : usernameField.getText().trim();
+        String host = hostField == null || hostField.getText() == null ? "" : hostField.getText().trim();
+        String port = portField == null || portField.getText() == null ? "" : portField.getText().trim();
+        if (username.isBlank() || host.isBlank() || port.isBlank()) {
+            remoteWorldsTitleLabel.setText(REMOTE_WORLDS_TITLE);
+            return;
+        }
+        remoteWorldsTitleLabel.setText(REMOTE_WORLDS_TITLE + " " + username + "@" + host + ":" + port);
     }
 
     protected boolean isRemoteConnected() {
@@ -518,7 +583,7 @@ public class MainController {
         });
     }
 
-    private void openWorldDetailsWindow(WorldEntry world) {
+    private void openWorldDetailsWindow(WorldEntry world, boolean serverWorld) {
         Stage stage = new Stage();
         stage.initModality(Modality.NONE);
         stage.initStyle(StageStyle.TRANSPARENT);
@@ -540,7 +605,8 @@ public class MainController {
         if (controller == null) {
             return;
         }
-        controller.initializeDialog(stage, world, this::refreshLists);
+        RemoteProfile remoteProfile = serverWorld ? buildRemoteProfile() : null;
+        controller.initializeDialog(stage, world, this::refreshLists, serverWorld, remoteProfile, transferService);
         stage.show();
     }
 
@@ -559,6 +625,34 @@ public class MainController {
             return "Unknown";
         }
         return value;
+    }
+
+    private static Instant worldStateTime(WorldEntry world) {
+        if (world == null) {
+            return Instant.EPOCH;
+        }
+        String gameTime = world.getGameTimeIso();
+        if (gameTime != null && !gameTime.isBlank()) {
+            try {
+                return Instant.parse(gameTime);
+            } catch (Exception ignored) {
+            }
+        }
+        return world.getLastModified() == null ? Instant.EPOCH : world.getLastModified();
+    }
+
+    private static boolean hasDifferentStateTimestamp(WorldEntry world) {
+        if (world == null) {
+            return false;
+        }
+        WorldEntry counterpart = world.getSameWorldReferences().stream()
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(null);
+        if (counterpart == null) {
+            return false;
+        }
+        return !worldStateTime(world).equals(worldStateTime(counterpart));
     }
 
     private void applyCachedConnectionSettings() {
@@ -674,12 +768,14 @@ public class MainController {
         private final VBox textContainer = new VBox(4.0, nameLabel, metaLabel, lastPlayedLabel, sameAsLabel);
         private final Button transferButton = new Button();
         private final Tooltip transferTooltip;
+        private final Button syncButton = new Button("Sync");
         private final Button openDirectoryButton = new Button("Open Dir");
-        private final HBox content = new HBox(10.0, previewImageView, textContainer, transferButton,
+        private final HBox content = new HBox(10.0, previewImageView, textContainer, transferButton, syncButton,
                 openDirectoryButton);
         private final boolean openDirectoryEnabled;
         private final String transferTooltipText;
         private final Consumer<WorldEntry> transferAction;
+        private final Consumer<WorldEntry> syncAction;
         private final BooleanSupplier transferEnabledSupplier;
 
         private WorldCell(
@@ -687,10 +783,12 @@ public class MainController {
                 String transferButtonText,
                 String transferTooltipText,
                 Consumer<WorldEntry> transferAction,
+                Consumer<WorldEntry> syncAction,
                 BooleanSupplier transferEnabledSupplier) {
             this.openDirectoryEnabled = openDirectoryEnabled;
             this.transferTooltipText = transferTooltipText;
             this.transferAction = transferAction;
+            this.syncAction = syncAction;
             this.transferEnabledSupplier = transferEnabledSupplier;
             previewImageView.setFitWidth(96);
             previewImageView.setFitHeight(54);
@@ -715,6 +813,16 @@ public class MainController {
                 WorldEntry currentItem = getItem();
                 if (currentItem != null && transferEnabledSupplier.getAsBoolean()) {
                     transferAction.accept(currentItem);
+                }
+                event.consume();
+            });
+            syncButton.setFocusTraversable(false);
+            syncButton.getStyleClass().addAll("action-button", "subtle-action-button", "world-sync-button");
+            syncButton.setTooltip(new Tooltip("Sync state"));
+            syncButton.setOnAction(event -> {
+                WorldEntry currentItem = getItem();
+                if (currentItem != null && transferEnabledSupplier.getAsBoolean()) {
+                    syncAction.accept(currentItem);
                 }
                 event.consume();
             });
@@ -767,6 +875,10 @@ public class MainController {
             }
             boolean transferEnabled = transferEnabledSupplier.getAsBoolean();
             transferButton.setDisable(!transferEnabled);
+            boolean showSync = hasSameAs;
+            syncButton.setVisible(showSync);
+            syncButton.setManaged(showSync);
+            syncButton.setDisable(!transferEnabled || !hasDifferentStateTimestamp(item));
 
             setGraphic(content);
         }

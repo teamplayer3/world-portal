@@ -119,6 +119,150 @@ public class StubTransferService implements TransferService {
         }
     }
 
+    @Override
+    public void syncRemoteToLocalWorld(WorldEntry remoteWorld, WorldEntry localWorld, RemoteProfile profile) {
+        if (remoteWorld == null || localWorld == null || profile == null) {
+            return;
+        }
+        if (remoteWorld.getPath() == null || remoteWorld.getPath().isBlank()
+                || localWorld.getPath() == null || localWorld.getPath().isBlank()) {
+            return;
+        }
+
+        Path localTargetWorld = Paths.get(localWorld.getPath());
+        Session session = null;
+        ChannelSftp channel = null;
+        try {
+            Files.createDirectories(localTargetWorld);
+            session = SshSessionFactory.createConnectedSession(profile);
+            channel = (ChannelSftp) session.openChannel("sftp");
+            channel.connect(15000);
+
+            downloadIncludedEntries(channel, remoteWorld.getPath(), localTargetWorld);
+            assertContainsFiles(localTargetWorld);
+        } catch (Exception failure) {
+            throw new RuntimeException("Sync failed.", failure);
+        } finally {
+            if (channel != null && channel.isConnected()) {
+                channel.disconnect();
+            }
+            if (session != null && session.isConnected()) {
+                session.disconnect();
+            }
+        }
+    }
+
+    @Override
+    public void syncLocalToRemoteWorld(WorldEntry localWorld, WorldEntry remoteWorld, RemoteProfile profile) {
+        if (localWorld == null || remoteWorld == null || profile == null) {
+            return;
+        }
+        if (localWorld.getPath() == null || localWorld.getPath().isBlank()
+                || remoteWorld.getPath() == null || remoteWorld.getPath().isBlank()) {
+            return;
+        }
+
+        Path localWorldPath = Paths.get(localWorld.getPath());
+        if (!Files.isDirectory(localWorldPath)) {
+            return;
+        }
+
+        Session session = null;
+        ChannelSftp channel = null;
+        try {
+            session = SshSessionFactory.createConnectedSession(profile);
+            channel = (ChannelSftp) session.openChannel("sftp");
+            channel.connect(15000);
+
+            uploadIncludedEntries(channel, localWorldPath, remoteWorld.getPath());
+        } catch (Exception failure) {
+            throw new RuntimeException("Sync failed.", failure);
+        } finally {
+            if (channel != null && channel.isConnected()) {
+                channel.disconnect();
+            }
+            if (session != null && session.isConnected()) {
+                session.disconnect();
+            }
+        }
+    }
+
+    @Override
+    public void renameRemoteWorld(WorldEntry remoteWorld, String requestedFolderName, RemoteProfile profile) {
+        if (remoteWorld == null || profile == null) {
+            return;
+        }
+        String currentRemotePath = remoteWorld.getPath();
+        if (currentRemotePath == null || currentRemotePath.isBlank()) {
+            return;
+        }
+
+        String normalizedRequestedFolder = requestedFolderName == null ? "" : requestedFolderName.trim();
+        if (normalizedRequestedFolder.isBlank()
+                || normalizedRequestedFolder.contains("/")
+                || normalizedRequestedFolder.contains("\\")) {
+            throw new RuntimeException("World folder name cannot include path separators.");
+        }
+
+        String currentFolder = remoteLeafName(currentRemotePath);
+        if (normalizedRequestedFolder.equals(currentFolder)) {
+            return;
+        }
+
+        String parentPath = remoteParentPath(currentRemotePath);
+        String targetRemotePath = parentPath + "/" + normalizedRequestedFolder;
+        Session session = null;
+        ChannelSftp channel = null;
+        try {
+            session = SshSessionFactory.createConnectedSession(profile);
+            channel = (ChannelSftp) session.openChannel("sftp");
+            channel.connect(15000);
+
+            if (remoteExists(channel, targetRemotePath)) {
+                throw new RuntimeException("A world folder with this name already exists.");
+            }
+            channel.rename(normalizeRemotePath(currentRemotePath), normalizeRemotePath(targetRemotePath));
+        } catch (Exception failure) {
+            throw new RuntimeException("Remote rename failed.", failure);
+        } finally {
+            if (channel != null && channel.isConnected()) {
+                channel.disconnect();
+            }
+            if (session != null && session.isConnected()) {
+                session.disconnect();
+            }
+        }
+    }
+
+    @Override
+    public void deleteRemoteWorld(WorldEntry remoteWorld, RemoteProfile profile) {
+        if (remoteWorld == null || profile == null) {
+            return;
+        }
+        String remotePath = remoteWorld.getPath();
+        if (remotePath == null || remotePath.isBlank()) {
+            return;
+        }
+
+        Session session = null;
+        ChannelSftp channel = null;
+        try {
+            session = SshSessionFactory.createConnectedSession(profile);
+            channel = (ChannelSftp) session.openChannel("sftp");
+            channel.connect(15000);
+            deleteRemoteDirectory(channel, normalizeRemotePath(remotePath));
+        } catch (Exception failure) {
+            throw new RuntimeException("Remote delete failed.", failure);
+        } finally {
+            if (channel != null && channel.isConnected()) {
+                channel.disconnect();
+            }
+            if (session != null && session.isConnected()) {
+                session.disconnect();
+            }
+        }
+    }
+
     private void uploadDirectory(ChannelSftp channel, Path localDirectory, String remoteDirectory) throws Exception {
         ensureRemoteDirectories(channel, remoteDirectory);
         try (var paths = Files.list(localDirectory)) {
@@ -367,5 +511,45 @@ public class StubTransferService implements TransferService {
                 channel.mkdir(currentPath);
             }
         }
+    }
+
+    private void deleteRemoteDirectory(ChannelSftp channel, String remoteDirectory) throws Exception {
+        @SuppressWarnings("unchecked")
+        List<ChannelSftp.LsEntry> entries = channel.ls(remoteDirectory);
+        for (ChannelSftp.LsEntry entry : entries) {
+            String name = entry.getFilename();
+            if (".".equals(name) || "..".equals(name)) {
+                continue;
+            }
+            String child = remoteDirectory + "/" + name;
+            if (entry.getAttrs().isDir()) {
+                deleteRemoteDirectory(channel, child);
+            } else {
+                channel.rm(child);
+            }
+        }
+        channel.rmdir(remoteDirectory);
+    }
+
+    private String remoteParentPath(String remotePath) {
+        String normalized = normalizeRemotePath(remotePath);
+        int lastSlash = normalized.lastIndexOf('/');
+        if (lastSlash <= 0) {
+            return "/";
+        }
+        return normalized.substring(0, lastSlash);
+    }
+
+    private String remoteLeafName(String remotePath) {
+        String normalized = normalizeRemotePath(remotePath);
+        int lastSlash = normalized.lastIndexOf('/');
+        if (lastSlash < 0 || lastSlash == normalized.length() - 1) {
+            return normalized;
+        }
+        return normalized.substring(lastSlash + 1);
+    }
+
+    private String normalizeRemotePath(String remotePath) {
+        return remotePath.replace('\\', '/').replaceAll("/+$", "");
     }
 }

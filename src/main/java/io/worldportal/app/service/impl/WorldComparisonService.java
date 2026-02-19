@@ -27,11 +27,7 @@ public class WorldComparisonService {
         if (isBlank(left.getUuidBinary()) || isBlank(right.getUuidBinary())) {
             return false;
         }
-        if (isBlank(left.getGameTimeIso()) || isBlank(right.getGameTimeIso())) {
-            return false;
-        }
-        return left.getUuidBinary().equals(right.getUuidBinary())
-                && left.getGameTimeIso().equals(right.getGameTimeIso());
+        return left.getUuidBinary().equals(right.getUuidBinary());
     }
 
     private void clearReferences(List<WorldEntry> worlds) {

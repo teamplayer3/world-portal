@@ -69,4 +69,31 @@ class WorldDetailsControllerTest {
         assertTrue(WorldDetailsController.hasWhitelistChanges(true, List.of("a", "b"), false, List.of("a", "b")));
         assertTrue(WorldDetailsController.hasWhitelistChanges(true, List.of("a", "b"), true, List.of("a", "b", "c")));
     }
+
+    @Test
+    void formatGameWorldTimeShowsIsoValueOrUnknown() {
+        assertEquals("Feb 11, 2026 10:00 UTC", WorldDetailsController.formatGameWorldTime("2026-02-11T10:00:00Z"));
+        assertEquals("raw-value", WorldDetailsController.formatGameWorldTime("raw-value"));
+        assertEquals("Unknown", WorldDetailsController.formatGameWorldTime("  "));
+        assertEquals("Unknown", WorldDetailsController.formatGameWorldTime(null));
+    }
+
+    @Test
+    void worldDetailsEditingAvailabilityTreatsServerWorldsAsEditable() throws Exception {
+        Path localWorldFolder = Files.createTempDirectory("world-details-editable");
+        Path missingWorldFolder = localWorldFolder.resolve("missing");
+
+        assertTrue(WorldDetailsController.isWorldDetailsEditable(localWorldFolder, false));
+        assertFalse(WorldDetailsController.isWorldDetailsEditable(missingWorldFolder, false));
+        assertTrue(WorldDetailsController.isWorldDetailsEditable(missingWorldFolder, true));
+        assertEquals(
+                null,
+                WorldDetailsController.validateServerWorldFolderEdit("old-folder", "new-folder"));
+        assertEquals(
+                "World folder name cannot include path separators.",
+                WorldDetailsController.validateServerWorldFolderEdit("old-folder", "folder/with/slash"));
+        assertEquals(
+                null,
+                WorldDetailsController.validateServerWorldFolderEdit("same-folder", "same-folder"));
+    }
 }

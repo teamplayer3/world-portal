@@ -2,8 +2,12 @@ package io.worldportal.app;
 
 import io.worldportal.app.ui.MainController;
 import io.worldportal.app.model.WorldEntry;
+import io.worldportal.app.model.RemoteProfile;
+import io.worldportal.app.service.TransferService;
+import io.worldportal.app.service.WorldService;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
@@ -22,8 +26,10 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.time.Instant;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
@@ -194,6 +200,110 @@ class MainControllerConnectionStateTest {
     }
 
     @Test
+    void worldCellShowsSyncButtonWhenWorldHasSameWorldReference() throws Exception {
+        Assumptions.assumeTrue(javaFxAvailable, "JavaFX runtime is not available in this environment");
+        runOnFxThreadAndWait(() -> assertTrue(worldCellContainsSyncButtonForSameWorld()));
+    }
+
+    @Test
+    void worldCellDisablesSyncButtonWhenSameWorldTimestampsMatch() throws Exception {
+        Assumptions.assumeTrue(javaFxAvailable, "JavaFX runtime is not available in this environment");
+        runOnFxThreadAndWait(() -> assertTrue(worldCellSyncButtonDisabledForEqualTimestamps()));
+    }
+
+    @Test
+    void syncWorldDownloadsWhenRemoteGameTimeIsNewer() throws Exception {
+        RecordingTransferService transferService = new RecordingTransferService();
+        MainController controller = new MainController(new NoOpWorldService(), transferService);
+
+        setField(controller, "hostField", new TextField("example.com"));
+        setField(controller, "portField", new TextField("22"));
+        setField(controller, "usernameField", new TextField("user"));
+        setField(controller, "remotePathField", new TextField("/srv/worlds"));
+        setField(controller, "localWorldsPathField", new TextField("/tmp/worlds"));
+        ComboBox<String> authTypeCombo = new ComboBox<>(FXCollections.observableArrayList("Password"));
+        authTypeCombo.getSelectionModel().select("Password");
+        setField(controller, "authTypeCombo", authTypeCombo);
+        setField(controller, "passwordField", new PasswordField());
+        setField(controller, "publicKeyFileCombo", new ComboBox<String>());
+
+        WorldEntry local = new WorldEntry();
+        local.setId("LocalFolder");
+        local.setPath("/tmp/worlds/LocalFolder");
+        local.setUuidBinary("shared-uuid");
+        local.setGameTimeIso("2026-02-10T10:00:00Z");
+
+        WorldEntry remote = new WorldEntry();
+        remote.setId("RemoteFolder");
+        remote.setPath("/srv/worlds/RemoteFolder");
+        remote.setUuidBinary("shared-uuid");
+        remote.setGameTimeIso("2026-02-11T10:00:00Z");
+
+        local.addSameWorldReference(remote);
+        remote.addSameWorldReference(local);
+
+        ObservableList<WorldEntry> localWorlds = getObservableWorldList(controller, "localWorlds");
+        ObservableList<WorldEntry> remoteWorlds = getObservableWorldList(controller, "remoteWorlds");
+        localWorlds.setAll(local);
+        remoteWorlds.setAll(remote);
+
+        invokeSyncWorld(controller, local);
+
+        assertTrue(transferService.awaitInvocation());
+        assertEquals(0, transferService.uploadInvocations);
+        assertEquals(0, transferService.downloadInvocations);
+        assertEquals(1, transferService.syncDownloadInvocations);
+        assertTrue(transferService.lastSyncRemoteWorld == remote);
+        assertTrue(transferService.lastSyncLocalWorld == local);
+    }
+
+    @Test
+    void syncWorldUploadsWhenLocalGameTimeIsNewer() throws Exception {
+        RecordingTransferService transferService = new RecordingTransferService();
+        MainController controller = new MainController(new NoOpWorldService(), transferService);
+
+        setField(controller, "hostField", new TextField("example.com"));
+        setField(controller, "portField", new TextField("22"));
+        setField(controller, "usernameField", new TextField("user"));
+        setField(controller, "remotePathField", new TextField("/srv/worlds"));
+        setField(controller, "localWorldsPathField", new TextField("/tmp/worlds"));
+        ComboBox<String> authTypeCombo = new ComboBox<>(FXCollections.observableArrayList("Password"));
+        authTypeCombo.getSelectionModel().select("Password");
+        setField(controller, "authTypeCombo", authTypeCombo);
+        setField(controller, "passwordField", new PasswordField());
+        setField(controller, "publicKeyFileCombo", new ComboBox<String>());
+
+        WorldEntry local = new WorldEntry();
+        local.setId("LocalFolder");
+        local.setPath("/tmp/worlds/LocalFolder");
+        local.setUuidBinary("shared-uuid");
+        local.setGameTimeIso("2026-02-12T10:00:00Z");
+
+        WorldEntry remote = new WorldEntry();
+        remote.setId("RemoteFolder");
+        remote.setPath("/srv/worlds/RemoteFolder");
+        remote.setUuidBinary("shared-uuid");
+        remote.setGameTimeIso("2026-02-11T10:00:00Z");
+
+        local.addSameWorldReference(remote);
+        remote.addSameWorldReference(local);
+
+        ObservableList<WorldEntry> localWorlds = getObservableWorldList(controller, "localWorlds");
+        ObservableList<WorldEntry> remoteWorlds = getObservableWorldList(controller, "remoteWorlds");
+        localWorlds.setAll(local);
+        remoteWorlds.setAll(remote);
+
+        invokeSyncWorld(controller, local);
+
+        assertTrue(transferService.awaitInvocation());
+        assertEquals(0, transferService.uploadInvocations);
+        assertEquals(0, transferService.downloadInvocations);
+        assertEquals(1, transferService.syncUploadInvocations);
+        assertTrue(transferService.lastSyncLocalWorld == local);
+        assertTrue(transferService.lastSyncRemoteWorld == remote);
+    }
+
+    @Test
     void worldCellMetadataDoesNotShowPatchInfo() throws Exception {
         Assumptions.assumeTrue(javaFxAvailable, "JavaFX runtime is not available in this environment");
         runOnFxThreadAndWait(() -> {
@@ -217,6 +327,33 @@ class MainControllerConnectionStateTest {
         });
     }
 
+    @Test
+    void remoteWorldsHeadingShowsConnectionDetailsWhenConnected() throws Exception {
+        Assumptions.assumeTrue(javaFxAvailable, "JavaFX runtime is not available in this environment");
+        AtomicBoolean connected = new AtomicBoolean(false);
+        MainController controller = new MainController() {
+            @Override
+            protected boolean isRemoteConnected() {
+                return connected.get();
+            }
+        };
+
+        Label remoteWorldsTitleLabel = new Label("Remote Worlds");
+        setField(controller, "remoteWorldsTitleLabel", remoteWorldsTitleLabel);
+        setField(controller, "usernameField", new TextField("player"));
+        setField(controller, "hostField", new TextField("example.com"));
+        setField(controller, "portField", new TextField("2222"));
+
+        runOnFxThreadAndWait(() -> {
+            invokeSyncTransferButtons(controller);
+            assertEquals("Remote Worlds", remoteWorldsTitleLabel.getText());
+
+            connected.set(true);
+            invokeSyncTransferButtons(controller);
+            assertEquals("Remote Worlds player@example.com:2222", remoteWorldsTitleLabel.getText());
+        });
+    }
+
     private static void invokeBusyState(MainController controller, boolean busy) {
         try {
             Method method = MainController.class.getDeclaredMethod("setRemoteConnectionBusy", boolean.class);
@@ -237,6 +374,26 @@ class MainControllerConnectionStateTest {
         }
     }
 
+    private static void invokeSyncWorld(MainController controller, WorldEntry selectedWorld) {
+        try {
+            Method method = MainController.class.getDeclaredMethod("onSyncWorld", WorldEntry.class);
+            method.setAccessible(true);
+            method.invoke(controller, selectedWorld);
+        } catch (ReflectiveOperationException reflectionFailure) {
+            throw new AssertionError(reflectionFailure);
+        }
+    }
+
+    private static void invokeSyncTransferButtons(MainController controller) {
+        try {
+            Method method = MainController.class.getDeclaredMethod("syncTransferButtons");
+            method.setAccessible(true);
+            method.invoke(controller);
+        } catch (ReflectiveOperationException reflectionFailure) {
+            throw new AssertionError(reflectionFailure);
+        }
+    }
+
     private static boolean worldCellContainsTransferButton(String expectedText) {
         try {
             Class<?> worldCellClass = findWorldCellClass();
@@ -245,6 +402,7 @@ class MainControllerConnectionStateTest {
                     String.class,
                     String.class,
                     Consumer.class,
+                    Consumer.class,
                     BooleanSupplier.class);
             constructor.setAccessible(true);
 
@@ -252,6 +410,8 @@ class MainControllerConnectionStateTest {
                     true,
                     expectedText,
                     "tooltip",
+                    (Consumer<WorldEntry>) world -> {
+                    },
                     (Consumer<WorldEntry>) world -> {
                     },
                     (BooleanSupplier) () -> true);
@@ -278,6 +438,94 @@ class MainControllerConnectionStateTest {
         }
     }
 
+    private static boolean worldCellContainsSyncButtonForSameWorld() {
+        try {
+            Class<?> worldCellClass = findWorldCellClass();
+            Constructor<?> constructor = worldCellClass.getDeclaredConstructor(
+                    boolean.class,
+                    String.class,
+                    String.class,
+                    Consumer.class,
+                    Consumer.class,
+                    BooleanSupplier.class);
+            constructor.setAccessible(true);
+
+            Object cell = constructor.newInstance(
+                    true,
+                    ">>",
+                    "Upload",
+                    (Consumer<WorldEntry>) world -> {
+                    },
+                    (Consumer<WorldEntry>) world -> {
+                    },
+                    (BooleanSupplier) () -> true);
+
+            Method updateItem = worldCellClass.getDeclaredMethod("updateItem", WorldEntry.class, boolean.class);
+            updateItem.setAccessible(true);
+            WorldEntry local = new WorldEntry("folder", "Local", "/tmp/local", null, "Survival", "1.0", Instant.now());
+            WorldEntry remote = new WorldEntry("folderRemote", "Remote", "/tmp/remote", null, "Survival", "1.0",
+                    Instant.now());
+            local.addSameWorldReference(remote);
+            updateItem.invoke(cell, local, false);
+
+            Method getGraphic = cell.getClass().getSuperclass().getMethod("getGraphic");
+            Object graphic = getGraphic.invoke(cell);
+            if (!(graphic instanceof HBox hBox)) {
+                return false;
+            }
+
+            for (Node child : hBox.getChildren()) {
+                if (child instanceof Button button && "Sync".equals(button.getText())) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (ReflectiveOperationException reflectionFailure) {
+            throw new AssertionError(reflectionFailure);
+        }
+    }
+
+    private static boolean worldCellSyncButtonDisabledForEqualTimestamps() {
+        try {
+            Class<?> worldCellClass = findWorldCellClass();
+            Constructor<?> constructor = worldCellClass.getDeclaredConstructor(
+                    boolean.class,
+                    String.class,
+                    String.class,
+                    Consumer.class,
+                    Consumer.class,
+                    BooleanSupplier.class);
+            constructor.setAccessible(true);
+
+            Object cell = constructor.newInstance(
+                    true,
+                    ">>",
+                    "Upload",
+                    (Consumer<WorldEntry>) world -> {
+                    },
+                    (Consumer<WorldEntry>) world -> {
+                    },
+                    (BooleanSupplier) () -> true);
+
+            Method updateItem = worldCellClass.getDeclaredMethod("updateItem", WorldEntry.class, boolean.class);
+            updateItem.setAccessible(true);
+            WorldEntry local = new WorldEntry("folder", "Local", "/tmp/local", null, "Survival", "1.0", Instant.now());
+            local.setGameTimeIso("2026-02-11T10:00:00Z");
+            WorldEntry remote = new WorldEntry("folderRemote", "Remote", "/tmp/remote", null, "Survival", "1.0",
+                    Instant.now());
+            remote.setGameTimeIso("2026-02-11T10:00:00Z");
+            local.addSameWorldReference(remote);
+            updateItem.invoke(cell, local, false);
+
+            Field syncButtonField = worldCellClass.getDeclaredField("syncButton");
+            syncButtonField.setAccessible(true);
+            Button syncButton = (Button) syncButtonField.get(cell);
+            return syncButton.isDisable();
+        } catch (ReflectiveOperationException reflectionFailure) {
+            throw new AssertionError(reflectionFailure);
+        }
+    }
+
     private static Class<?> findWorldCellClass() {
         for (Class<?> nestedClass : MainController.class.getDeclaredClasses()) {
             if ("WorldCell".equals(nestedClass.getSimpleName())) {
@@ -295,6 +543,7 @@ class MainControllerConnectionStateTest {
                     String.class,
                     String.class,
                     Consumer.class,
+                    Consumer.class,
                     BooleanSupplier.class);
             constructor.setAccessible(true);
 
@@ -302,6 +551,8 @@ class MainControllerConnectionStateTest {
                     true,
                     ">>",
                     "Upload",
+                    (Consumer<WorldEntry>) world -> {
+                    },
                     (Consumer<WorldEntry>) world -> {
                     },
                     (BooleanSupplier) () -> true);
@@ -328,6 +579,7 @@ class MainControllerConnectionStateTest {
                     String.class,
                     String.class,
                     Consumer.class,
+                    Consumer.class,
                     BooleanSupplier.class);
             constructor.setAccessible(true);
 
@@ -335,6 +587,8 @@ class MainControllerConnectionStateTest {
                     true,
                     transferButtonText,
                     ">>".equals(transferButtonText) ? "Upload" : "Download",
+                    (Consumer<WorldEntry>) world -> {
+                    },
                     (Consumer<WorldEntry>) world -> {
                     },
                     (BooleanSupplier) () -> enabled);
@@ -350,6 +604,68 @@ class MainControllerConnectionStateTest {
             return transferButton.getTooltip();
         } catch (ReflectiveOperationException reflectionFailure) {
             throw new AssertionError(reflectionFailure);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static ObservableList<WorldEntry> getObservableWorldList(MainController controller, String fieldName)
+            throws Exception {
+        Field field = MainController.class.getDeclaredField(fieldName);
+        field.setAccessible(true);
+        return (ObservableList<WorldEntry>) field.get(controller);
+    }
+
+    private static class NoOpWorldService implements WorldService {
+        @Override
+        public List<WorldEntry> listLocalWorlds(String localWorldsPath) {
+            return List.of();
+        }
+
+        @Override
+        public List<WorldEntry> listRemoteWorlds(RemoteProfile profile) {
+            return List.of();
+        }
+    }
+
+    private static class RecordingTransferService implements TransferService {
+        private final CountDownLatch invocationLatch = new CountDownLatch(1);
+        private volatile int uploadInvocations;
+        private volatile int downloadInvocations;
+        private volatile int syncDownloadInvocations;
+        private volatile int syncUploadInvocations;
+        private volatile WorldEntry lastSyncRemoteWorld;
+        private volatile WorldEntry lastSyncLocalWorld;
+
+        @Override
+        public void uploadWorld(WorldEntry world, RemoteProfile profile) {
+            uploadInvocations++;
+            invocationLatch.countDown();
+        }
+
+        @Override
+        public void downloadWorld(WorldEntry world, RemoteProfile profile) {
+            downloadInvocations++;
+            invocationLatch.countDown();
+        }
+
+        @Override
+        public void syncRemoteToLocalWorld(WorldEntry remoteWorld, WorldEntry localWorld, RemoteProfile profile) {
+            syncDownloadInvocations++;
+            lastSyncRemoteWorld = remoteWorld;
+            lastSyncLocalWorld = localWorld;
+            invocationLatch.countDown();
+        }
+
+        @Override
+        public void syncLocalToRemoteWorld(WorldEntry localWorld, WorldEntry remoteWorld, RemoteProfile profile) {
+            syncUploadInvocations++;
+            lastSyncLocalWorld = localWorld;
+            lastSyncRemoteWorld = remoteWorld;
+            invocationLatch.countDown();
+        }
+
+        private boolean awaitInvocation() throws InterruptedException {
+            return invocationLatch.await(2, TimeUnit.SECONDS);
         }
     }
 

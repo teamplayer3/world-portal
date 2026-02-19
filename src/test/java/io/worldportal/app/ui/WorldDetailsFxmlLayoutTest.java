@@ -111,6 +111,7 @@ class WorldDetailsFxmlLayoutTest {
         assertTrue(detailsFxml.contains("fx:id=\"detailsNameInput\" promptText=\"World name\" styleClass=\"neon-input\""));
         assertTrue(detailsFxml.contains("fx:id=\"detailsFolderInput\" promptText=\"Folder name\" styleClass=\"neon-input\""));
         assertTrue(detailsFxml.contains("fx:id=\"detailsGameModeLabel\" styleClass=\"field-label\""));
+        assertTrue(detailsFxml.contains("fx:id=\"detailsGameWorldTimeLabel\" styleClass=\"field-label\""));
         assertTrue(detailsFxml.contains("fx:id=\"detailsPatchLabel\" styleClass=\"field-label\""));
         assertTrue(detailsFxml.contains("fx:id=\"detailsLastPlayedLabel\" styleClass=\"field-label\""));
         assertTrue(detailsFxml.contains("fx:id=\"detailsWhitelistTitle\" styleClass=\"panel-title\""));
@@ -123,6 +124,9 @@ class WorldDetailsFxmlLayoutTest {
         assertTrue(detailsFxml.contains("fx:id=\"detailsWhitelistStatusLabel\" styleClass=\"status-label\""));
         assertTrue(detailsFxml.contains("fx:id=\"detailsIdentityStatusLabel\" styleClass=\"status-label\""));
         assertTrue(detailsFxml.contains("fx:id=\"detailsSaveIdentityButton\" managed=\"false\" mnemonicParsing=\"false\" styleClass=\"action-button\" text=\"Save Changes\" visible=\"false\""));
+        assertTrue(detailsFxml.contains("fx:id=\"detailsSaveLoadingIndicator\""));
+        assertTrue(detailsFxml.contains("managed=\"false\""));
+        assertTrue(detailsFxml.contains("visible=\"false\""));
     }
 
     @Test

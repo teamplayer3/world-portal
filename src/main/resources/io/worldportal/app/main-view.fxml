@@ -123,7 +123,7 @@
                 </VBox>
                 <VBox spacing="8.0" styleClass="worlds-panel" HBox.hgrow="ALWAYS">
                     <children>
-                        <Label styleClass="panel-title" text="Remote Worlds"/>
+                        <Label fx:id="remoteWorldsTitleLabel" styleClass="panel-title" text="Remote Worlds"/>
                         <ListView fx:id="remoteWorldsList" styleClass="worlds-list" VBox.vgrow="ALWAYS"/>
                     </children>
                 </VBox>
